@@ -1,0 +1,1780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Room Discrepancy Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<style>
+  :root{
+    --bg:#F6F4EF;
+    --surface:#FFFFFF;
+    --ink:#1B2420;
+    --ink-soft:#5B655F;
+    --line:#DAD5C8;
+    --verified:#3F6659;
+    --verified-bg:#E7EEE9;
+    --pending:#B8873A;
+    --pending-bg:#F6ECDA;
+    --alert:#A63D33;
+    --alert-bg:#F5E4E1;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font-family:'IBM Plex Sans',system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  .mono{font-family:'IBM Plex Mono',ui-monospace,monospace;}
+  #app{max-width:520px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;
+    background:var(--bg);position:relative;}
+
+  header{padding:18px 20px 14px;border-bottom:1px solid var(--line);
+    display:flex;align-items:baseline;justify-content:space-between;}
+  header .title{font-size:17px;font-weight:600;letter-spacing:-0.01em;}
+  header .date{font-size:13px;color:var(--ink-soft);font-family:'IBM Plex Mono',monospace;}
+
+  main{flex:1;padding:16px 20px 92px;overflow-y:auto;}
+  .hidden{display:none !important;}
+
+  .panel-label{font-size:13px;color:var(--ink-soft);margin:0 0 6px;line-height:1.5;}
+  .panel-title{font-size:15px;font-weight:600;margin:22px 0 8px;}
+  .panel-title:first-child{margin-top:0;}
+
+  textarea{width:100%;min-height:110px;padding:12px 14px;border:1px solid var(--line);
+    border-radius:4px;background:var(--surface);font-family:'IBM Plex Mono',monospace;
+    font-size:14px;color:var(--ink);resize:vertical;line-height:1.6;}
+  textarea:focus{outline:none;border-color:var(--verified);}
+
+  .row-input{display:flex;gap:8px;margin-top:10px;}
+  input[type=text]{flex:1;padding:11px 12px;border:1px solid var(--line);border-radius:4px;
+    background:var(--surface);font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--ink);}
+  input[type=text]:focus{outline:none;border-color:var(--verified);}
+
+  button{font-family:inherit;cursor:pointer;border:none;}
+  .btn-primary{width:100%;padding:13px;margin-top:12px;background:var(--ink);color:var(--bg);
+    border-radius:4px;font-size:14px;font-weight:600;letter-spacing:.01em;}
+  .btn-primary:active{opacity:.85;}
+  .btn-secondary{padding:11px 16px;background:transparent;color:var(--ink);border:1px solid var(--line);
+    border-radius:4px;font-size:14px;font-weight:500;white-space:nowrap;}
+  .btn-add{padding:0 18px;background:var(--ink);color:var(--bg);border-radius:4px;font-size:14px;font-weight:600;}
+
+  .stat-row{display:flex;gap:10px;margin-bottom:18px;}
+  .stat{flex:1;background:var(--surface);border:1px solid var(--line);border-radius:4px;
+    padding:12px 12px 10px;}
+  .stat .num{font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:600;line-height:1;}
+  .stat .lbl{font-size:11.5px;color:var(--ink-soft);margin-top:4px;}
+  .stat.alert .num{color:var(--alert);}
+  .stat.verified .num{color:var(--verified);}
+
+  ul.ledger{list-style:none;margin:0;padding:0;border-top:1px solid var(--line);}
+  ul.ledger li{border-bottom:1px solid var(--line);}
+
+  .room-row{display:flex;align-items:center;gap:12px;padding:13px 2px;}
+  .room-tick{width:26px;height:26px;border-radius:50%;border:1.5px solid var(--line);
+    flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--surface);}
+  .room-tick.on{background:var(--verified);border-color:var(--verified);}
+  .room-tick.flagged{background:var(--pending);border-color:var(--pending);}
+  .room-tick svg{width:14px;height:14px;stroke:var(--bg);stroke-width:3;fill:none;
+    stroke-linecap:round;stroke-linejoin:round;opacity:0;transition:opacity .1s;}
+  .room-tick.on svg, .room-tick.flagged svg{opacity:1;}
+  .room-main{flex:1;min-width:0;}
+  .room-num{font-family:'IBM Plex Mono',monospace;font-size:16px;font-weight:600;}
+  .room-arrival{font-size:12px;color:var(--ink-soft);margin-top:1px;}
+  .luggage-btn{flex-shrink:0;width:34px;height:34px;border-radius:4px;border:1px solid var(--line);
+    background:var(--surface);display:flex;align-items:center;justify-content:center;}
+  .luggage-btn.flagged{background:var(--pending-bg);border-color:var(--pending);}
+  .luggage-btn svg{width:17px;height:17px;stroke:var(--ink-soft);stroke-width:1.6;fill:none;}
+  .luggage-btn.flagged svg{stroke:var(--pending);}
+
+  .extra-row{display:flex;align-items:center;gap:12px;padding:12px 2px;}
+  .extra-row .room-num{flex:1;}
+  .trash-btn{width:32px;height:32px;border-radius:4px;background:transparent;
+    display:flex;align-items:center;justify-content:center;}
+  .trash-btn svg{width:16px;height:16px;stroke:var(--alert);stroke-width:1.7;fill:none;}
+
+  .empty{padding:28px 4px;text-align:center;color:var(--ink-soft);font-size:13.5px;line-height:1.6;}
+
+  .summary-block{margin-bottom:22px;}
+  .summary-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+  .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+  .dot.alert{background:var(--alert);}
+  .dot.pending{background:var(--pending);}
+  .dot.verified{background:var(--verified);}
+  .summary-head h3{font-size:14px;font-weight:600;margin:0;}
+  .summary-item{padding:9px 0 9px 16px;border-bottom:1px solid var(--line);font-size:14px;}
+  .summary-item .room-num{font-size:15px;}
+  .summary-item .note{font-size:12px;color:var(--ink-soft);margin-top:1px;}
+  .summary-block ul{border-top:1px solid var(--line);}
+
+  #emailPreview{width:100%;min-height:220px;padding:14px;border:1px solid var(--line);
+    border-radius:4px;background:var(--surface);font-family:'IBM Plex Mono',monospace;
+    font-size:12.5px;line-height:1.7;color:var(--ink);white-space:pre-wrap;}
+
+  .toast{position:fixed;bottom:78px;left:50%;transform:translateX(-50%) translateY(8px);
+    background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:5px;font-size:13.5px;
+    opacity:0;pointer-events:none;transition:opacity .18s, transform .18s;z-index:20;
+    max-width:80%;text-align:center;}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  nav{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--line);
+    display:flex;max-width:520px;margin:0 auto;padding-bottom:env(safe-area-inset-bottom);}
+  nav button{flex:1;padding:11px 4px 9px;background:transparent;display:flex;flex-direction:column;
+    align-items:center;gap:4px;color:var(--ink-soft);}
+  nav button svg{width:20px;height:20px;stroke:var(--ink-soft);stroke-width:1.6;fill:none;}
+  nav button span{font-size:10.5px;font-weight:500;}
+  nav button.active{color:var(--ink);}
+  nav button.active svg{stroke:var(--ink);}
+  nav .badge{position:relative;}
+  nav .badge::after{content:attr(data-count);position:absolute;top:-3px;right:-9px;
+    background:var(--alert);color:#fff;font-size:9.5px;font-weight:700;min-width:14px;height:14px;
+    border-radius:7px;display:flex;align-items:center;justify-content:center;padding:0 3px;
+    font-family:'IBM Plex Mono',monospace;}
+
+  .loading{padding:60px 20px;text-align:center;color:var(--ink-soft);font-size:13.5px;}
+
+  .sign-block{border:1px solid var(--line);border-radius:4px;background:var(--surface);padding:12px 14px;}
+  .sign-row{display:flex;gap:8px;}
+  .sign-row input{flex:1;}
+  .sign-done{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .sign-done-text{min-width:0;}
+  .sign-label{font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;}
+  .sign-name{font-size:15px;font-weight:600;margin-top:2px;}
+  .sign-time{font-size:12px;color:var(--ink-soft);margin-top:1px;}
+  .sign-check{width:22px;height:22px;border-radius:50%;background:var(--verified);flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;}
+  .sign-check svg{width:12px;height:12px;stroke:var(--bg);stroke-width:3;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+  .link-btn{background:transparent;color:var(--ink-soft);font-size:12px;text-decoration:underline;padding:2px;}
+
+  #printArea{display:none;}
+
+  .login-card{max-width:380px;margin:60px auto;padding:24px;border:1px solid var(--line);
+    border-radius:6px;background:var(--surface);}
+  .login-title{font-size:18px;font-weight:600;margin-bottom:6px;}
+  .login-error{color:var(--alert);font-size:13px;margin-top:10px;min-height:18px;}
+  .who{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-soft);}
+  .who .role-chip{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;
+    padding:2px 7px;border-radius:10px;background:var(--verified-bg);color:var(--verified);}
+  .who .role-chip.chip-hk{background:var(--verified-bg);color:var(--verified);}
+  .who .role-chip.chip-fo{background:#E5EBF2;color:#3A5874;}
+  .who button.link-btn{margin-left:auto;}
+  /* Read-only (View) state — dimmed + interactions blocked. Applied from JS by
+     role (is-readonly class), not by permanently hiding via CSS. */
+  .readonly-banner{display:flex;align-items:center;gap:8px;background:var(--pending-bg);
+    color:var(--pending);border:1px solid var(--pending);border-radius:4px;
+    padding:9px 12px;font-size:12.5px;font-weight:600;margin:0 0 14px;}
+  .is-readonly button,.is-readonly input,.is-readonly textarea{opacity:.55;}
+  .is-readonly [data-action]{pointer-events:none;opacity:.55;}
+  .is-readonly .room-tick svg,.is-readonly .luggage-btn svg,
+  .is-readonly .trash-btn svg,.is-readonly .sign-check svg{opacity:.3;}
+  .is-readonly .room-tick{cursor:default;}
+
+  /* Staff management (managers) */
+  .staff-row{display:flex;align-items:center;gap:12px;padding:13px 2px;}
+  .staff-main{flex:1;min-width:0;}
+  .staff-name{font-size:15px;font-weight:600;}
+  .staff-email{font-size:12.5px;color:var(--ink-soft);margin-top:2px;}
+  .staff-chip{display:flex;align-items:center;gap:6px;margin-top:3px;}
+  .staff-chip .role-chip{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;
+    padding:2px 7px;border-radius:10px;}
+  .staff-chip .role-chip.chip-hk{background:var(--verified-bg);color:var(--verified);}
+  .staff-chip .role-chip.chip-fo{background:#E5EBF2;color:#3A5874;}
+  .staff-controls{display:flex;gap:8px;}
+  .btn-sm{font-size:12px;padding:3px 8px;}
+  .badge-soft{font-size:10px;font-weight:600;color:var(--ink-soft);border:1px solid var(--line);
+    padding:1px 6px;border-radius:9px;}
+  .you-tag{font-size:10.5px;font-weight:600;color:var(--verified);text-transform:uppercase;letter-spacing:.04em;}
+  .act-off{color:var(--alert);}
+  select{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:4px;
+    background:var(--surface);font-size:14px;color:var(--ink);font-family:inherit;}
+  select:focus{outline:none;border-color:var(--verified);}
+  #staffFormWrap input[type=email],#staffFormWrap input[type=text]{width:100%;padding:11px 12px;
+    border:1px solid var(--line);border-radius:4px;background:var(--surface);font-family:'IBM Plex Mono',monospace;
+    font-size:14px;color:var(--ink);}
+  #staffFormWrap input:focus{border-color:var(--verified);outline:none;}
+
+  @media print{
+    @page{ margin: 14mm; }
+    body *{ visibility:hidden; }
+    #printArea, #printArea *{ visibility:visible; }
+    #printArea{
+      display:block; position:absolute; top:0; left:0; width:100%;
+      font-family:'IBM Plex Sans', system-ui, sans-serif; color:#111;
+    }
+    .print-header{display:flex;justify-content:space-between;align-items:baseline;
+      border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:4px;}
+    .print-header h1{font-size:19px;margin:0;}
+    .print-header .print-date{font-family:'IBM Plex Mono',monospace;font-size:13px;}
+    .print-meta{display:flex;gap:24px;margin:10px 0 18px;font-size:12.5px;}
+    .print-meta b{font-family:'IBM Plex Mono',monospace;font-size:14px;}
+    .print-section{margin-bottom:16px; page-break-inside:avoid;}
+    .print-section h2{font-size:13px;margin:0 0 6px;text-transform:uppercase;letter-spacing:.03em;}
+    table.print-table{width:100%;border-collapse:collapse;font-size:12.5px;}
+    table.print-table th, table.print-table td{border-bottom:1px solid #ccc;padding:5px 6px;text-align:left;}
+    table.print-table th{font-weight:600;border-bottom:1.5px solid #111;}
+    .print-none{font-size:12.5px;color:#555;padding:4px 0;}
+    .print-signatures{display:flex;gap:40px;margin-top:34px;}
+    .print-sig{flex:1;}
+    .print-sig .sig-line{border-top:1px solid #111;margin-bottom:6px;padding-top:6px;
+      font-family:'IBM Plex Mono',monospace;font-size:12px;}
+    .print-sig .sig-role{font-size:11px;color:#555;margin-top:2px;}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="title">Room Discrepancy Report</div>
+    <div class="date mono" id="dateLabel">—</div>
+  </header>
+
+  <div class="who" id="whoBadge" style="padding:8px 20px;display:none;">
+    <span id="whoName"></span>
+    <span class="role-chip" id="whoRole"></span>
+    <button class="link-btn" id="logoutBtn">Sign out</button>
+  </div>
+
+  <main id="loginView">
+    <div class="login-card">
+      <div class="login-title">Sign in</div>
+      <p class="panel-label">Use the email and password given to you by the manager.</p>
+      <input type="email" id="loginEmail" placeholder="you@corinthia-tripoli.com" autocomplete="username">
+      <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password" style="margin-top:8px;">
+      <button class="btn-primary" id="loginBtn">Sign in</button>
+      <div id="loginError" class="login-error"></div>
+    </div>
+  </main>
+
+  <main id="loadingView" class="hidden"><div class="loading">Loading today's report…</div></main>
+
+  <main id="mainView" class="hidden">
+
+    <!-- SETUP TAB (Front Desk) -->
+    <section id="tab-setup">
+      <p class="panel-label">Front Desk: upload today's Guests In House PDF at 3:30 PM (the same report you already print). The app reads it directly — no retyping needed.</p>
+      <div class="needs-fd">
+      <label class="btn-primary" id="pdfUploadLabel" style="display:block;text-align:center;">
+        Upload PDF report
+        <input type="file" id="pdfInput" accept="application/pdf" style="display:none;">
+      </label>
+      <div id="pdfStatus" class="panel-label" style="margin-top:8px;"></div>
+
+      <div class="panel-title">Or paste the text instead</div>
+      <p class="panel-label">Tab, comma, or space separated all work. Extra columns (name, rate, etc.) are ignored automatically.</p>
+      <textarea id="pasteBox" placeholder="1069&#9;Dikmen,Emre,Mr&#9;C- Yasar Ozkan&#9;25-08-26&#9;08-09-26&#9;DLXQ&#9;1&#9;0&#9;CA&#9;BARBB"></textarea>
+      <div id="parsePreview" class="panel-label" style="margin-top:8px;"></div>
+      <button class="btn-primary" id="saveListBtn">Save & start today's checklist</button>
+      </div>
+
+      <div class="panel-title" id="currentListTitle">Current list — 0 rooms</div>
+      <div class="panel-label" id="uploadTimeLabel" style="margin-top:-8px;"></div>
+      <ul class="ledger" id="currentListPreview"></ul>
+    </section>
+
+    <!-- CHECKLIST TAB (Housekeeping) -->
+    <section id="tab-checklist" class="hidden">
+      <div class="stat-row">
+        <div class="stat verified"><div class="num" id="statConfirmed">0/0</div><div class="lbl">confirmed occupied</div></div>
+        <div class="stat"><div class="num mono" id="statLuggage">0</div><div class="lbl">no luggage flagged</div></div>
+      </div>
+      <input type="text" id="roomSearchInput" inputmode="numeric" placeholder="Search room number…" style="margin-bottom:12px;">
+      <p class="panel-label">Tap a room once you've physically confirmed it's occupied. Tap the case icon if there's no luggage in the room.</p>
+      <ul class="ledger" id="checklistList"></ul>
+    </section>
+
+    <!-- EXTRA TAB (Housekeeping) -->
+    <section id="tab-extra" class="hidden">
+      <p class="panel-label">Found a room occupied that isn't on the list at all? Add it here — it will be flagged as a discrepancy for Front Desk to follow up on.</p>
+      <div class="row-input">
+        <input type="text" id="extraRoomInput" placeholder="Room number" inputmode="numeric">
+        <button class="btn-add" id="addExtraBtn">Add</button>
+      </div>
+      <div class="panel-title">Extra rooms reported</div>
+      <ul class="ledger" id="extraList"></ul>
+    </section>
+
+    <!-- SUMMARY TAB -->
+    <section id="tab-summary" class="hidden">
+      <div class="stat-row">
+        <div class="stat alert"><div class="num" id="statDiscrepancies">0</div><div class="lbl">total discrepancies</div></div>
+        <div class="stat"><div class="num" id="statNoLuggageSum">0</div><div class="lbl">no luggage</div></div>
+      </div>
+
+      <div class="summary-block">
+        <div class="summary-head"><span class="dot alert"></span><h3>Listed but not confirmed occupied</h3></div>
+        <ul id="sumUnticked"></ul>
+      </div>
+      <div class="summary-block">
+        <div class="summary-head"><span class="dot alert"></span><h3>Found occupied, not on list</h3></div>
+        <ul id="sumExtras"></ul>
+      </div>
+      <div class="summary-block">
+        <div class="summary-head"><span class="dot pending"></span><h3>No luggage in room</h3></div>
+        <ul id="sumLuggage"></ul>
+      </div>
+
+      <div class="panel-title">Email to Front Desk</div>
+      <div id="emailPreview" class="mono"></div>
+      <button class="btn-primary" id="copyEmailBtn">Copy email text</button>
+
+      <div class="panel-title" id="confirmationTitle">Confirmation</div>
+      <p class="panel-label">Each department confirms once they've reviewed this report — this replaces the paper signature.</p>
+      <div id="signHK"></div>
+      <div id="signFO" style="margin-top:10px;"></div>
+
+      <button class="btn-secondary" id="printReportBtn" style="width:100%;margin-top:16px;">Print report</button>
+    </section>
+
+    <!-- HISTORY TAB -->
+    <section id="tab-history" class="hidden">
+      <div id="historyList">
+        <p class="panel-label">Past days' reports — every day is kept automatically.</p>
+        <ul class="ledger" id="historyListItems"><div class="empty">Loading…</div></ul>
+      </div>
+      <div id="historyDetail" class="hidden">
+        <button class="btn-secondary" id="historyBackBtn" style="margin-bottom:14px;">&larr; Back to list</button>
+        <div id="historyDetailBody"></div>
+        <button class="btn-secondary" id="historyPrintBtn" style="width:100%;margin-top:16px;">Print this report</button>
+      </div>
+    </section>
+
+    <!-- STAFF TAB (managers only) -->
+    <section id="tab-staff" class="hidden">
+      <p class="panel-label">Manage your department's staff and their roles — you only see people from your own department. Role changes take effect on their next sign-in.</p>
+      <button class="btn-secondary" id="staffAddBtn">＋ Add staff</button>
+      <div id="staffFormWrap" class="hidden">
+        <div class="panel-title" id="staffFormTitle">Add staff</div>
+        <input type="text" id="staffNameInput" placeholder="Full name" autocomplete="off">
+        <input type="email" id="staffEmailInput" placeholder="email@corinthia-tripoli.com" autocomplete="off" style="margin-top:8px;">
+        <select id="staffRoleSelect" style="width:100%;margin-top:8px;">
+          <option value="">Select role…</option>
+          <optgroup label="Housekeeping">
+            <option value="hk_staff">HK Staff — checks rooms, flags no-luggage, reports extras</option>
+            <option value="hk_supervisor">HK Supervisor — full HK work + signs the Housekeeping confirmation</option>
+            <option value="hk_manager">HK Manager — full Housekeeping access + manages HK staff</option>
+          </optgroup>
+          <optgroup label="Front Desk">
+            <option value="fo_staff">FD Staff — uploads/pastes today's list</option>
+            <option value="fo_supervisor">FD Supervisor — full FD work + signs the Front Desk confirmation</option>
+            <option value="fo_manager">FD Manager — full Front Desk access + manages FD staff</option>
+          </optgroup>
+        </select>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+          <input type="checkbox" id="staffActiveCheck" checked> Active
+        </label>
+        <button class="btn-primary" id="staffSaveBtn">Save staff</button>
+        <button class="btn-secondary" id="staffCancelBtn" style="width:100%;margin-top:8px;">Cancel</button>
+      </div>
+      <div id="staffHint" class="panel-label" style="display:none;"></div>
+      <ul class="ledger" id="staffList"></ul>
+    </section>
+
+  </main>
+
+  <div class="toast" id="toast"></div>
+  <div id="printArea"></div>
+
+  <!-- Nav is built from JS at sign-in: only tabs the signed-in role can access
+       (View or Full) are mounted — hidden tabs never exist in the DOM. -->
+  <nav id="mainView2" class="hidden"></nav>
+</div>
+
+<script>
+(function(){
+  let state = { rooms: [], extras: [], confirmations: {} };
+  let activeTab = 'setup';
+  let todayKey = '';
+  let historyRows = [];
+  let historyViewing = null;
+  let checklistFilter = '';
+  let listUploadedAt = null;
+
+  // ============================================================
+  // Roles & permissions — six roles, two departments. Mirrors
+  // supabase/schema.sql and roles-implementation-plan.md.
+  // ============================================================
+  const ROLE_LABELS = {
+    hk_staff:'HK Staff', hk_supervisor:'HK Supervisor', hk_manager:'HK Manager',
+    fo_staff:'FD Staff', fo_supervisor:'FD Supervisor', fo_manager:'FD Manager'
+  };
+  const ROLE_DEPT = {
+    hk_staff:'hk', hk_supervisor:'hk', hk_manager:'hk',
+    fo_staff:'fo', fo_supervisor:'fo', fo_manager:'fo'
+  };
+  const ROLE_TIER = {
+    hk_staff:'staff', hk_supervisor:'supervisor', hk_manager:'manager',
+    fo_staff:'staff', fo_supervisor:'supervisor', fo_manager:'manager'
+  };
+  function myRole(){ return me ? me.role : ''; }
+  function myDept(){ return ROLE_DEPT[myRole()] || ''; }
+  function myTier(){ return ROLE_TIER[myRole()] || ''; }
+  function isSupOrMgr(){ const t = myTier(); return t==='supervisor' || t==='manager'; }
+
+  // Permission matrix from roles-implementation-plan.md.
+  // Returns 'hidden' (not mounted / not reachable), 'view' (visible, read-only)
+  // or 'full' (current behavior).
+  function tabAccess(tab){
+    const dept = myDept(), tier = myTier();
+    // Strictly departmental: managers work ONLY within their own department.
+    if(tab === 'setup'){
+      // Front Desk's tab: FD line staff + FO manager (own dept) can upload.
+      return dept === 'fo' ? 'full' : 'hidden';
+    }
+    if(tab === 'checklist' || tab === 'extra'){
+      // Housekeeping's tabs: HK line staff + HK manager (own dept) can tick.
+      return dept === 'hk' ? 'full' : 'hidden';
+    }
+    if(tab === 'summary') return tier === 'staff' ? 'view' : 'full';
+    if(tab === 'history') return tier === 'staff' ? 'hidden' : 'full';
+    if(tab === 'staff')   return tier === 'manager' ? 'full' : 'hidden';
+    return 'hidden';
+  }
+
+  // Sign-off (confirmation) is supervisor/manager only — never line staff.
+  function canConfirm(side){
+    const r = myRole();
+    if(side === 'housekeeping') return r === 'hk_supervisor' || r === 'hk_manager';
+    if(side === 'frontdesk')    return r === 'fo_supervisor' || r === 'fo_manager';
+    return false;
+  }
+  function canPrint(){ return isSupOrMgr(); }
+
+  const RO_MSG = {
+    // Only Summary is ever View-only now (for line staff). Setup/Checklist/Extra
+    // are departmental — full or hidden — so no read-only messages needed.
+    summary:   "Read-only view — review today's findings; changes are not allowed."
+  };
+  function roMsg(tab){ return RO_MSG[tab] || 'Read-only view — changes are not allowed.'; }
+
+  // Keep the pristine static markup per section so gating can restore it when a
+  // role change re-grants access (controls are JS-removed for hidden tabs).
+  const sectionOriginal = {};
+  ['setup','checklist','extra','summary','history','staff'].forEach(t=>{
+    sectionOriginal[t] = document.getElementById('tab-'+t).innerHTML;
+  });
+
+  const navButtons = [
+    { tab:'setup',     label:'Setup',     svg:'<svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>' },
+    { tab:'checklist', label:'Checklist', svg:'<svg viewBox="0 0 24 24"><path d="M9 11l3 3 8-8M20 12v6a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h9"/></svg>' },
+    { tab:'extra',     label:'Extra',     svg:'<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>' },
+    { tab:'summary',   label:'Summary',   svg:'<svg viewBox="0 0 24 24"><path d="M4 19h16M4 5h16M4 12h10"/></svg>' },
+    { tab:'history',   label:'History',   svg:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>' },
+    { tab:'staff',     label:'Staff',     svg:'<svg viewBox="0 0 24 24"><circle cx="13" cy="7" r="4"/><path d="M7 11h10v6a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h9"/></svg>' }
+  ];
+
+  // Build the nav once per sign-in: hidden tabs never get a button mounted, so
+  // there is nothing in the DOM to inspect or re-enable via dev tools.
+  function renderNav(){
+    const nav = document.getElementById('mainView2');
+    nav.innerHTML = '';
+    navButtons.forEach(({tab, label, svg})=>{
+      if(tabAccess(tab) === 'hidden') return;
+      const b = document.createElement('button');
+      b.className = 'tab-btn' + (tab==='extra' || tab==='summary' ? ' badge' : '');
+      if(tab === 'extra')    b.id = 'extraNavBtn';
+      if(tab === 'summary')  b.id = 'summaryNavBtn';
+      b.setAttribute('data-tab', tab);
+      const svgWrap = document.createElement('div');
+      svgWrap.innerHTML = svg;
+      b.appendChild(svgWrap.firstElementChild);
+      const span = document.createElement('span');
+      span.textContent = label;
+      b.appendChild(span);
+      nav.appendChild(b);
+    });
+  }
+
+  function defaultTabFor(){
+    if(tabAccess('setup') === 'full') return 'setup';
+    if(tabAccess('checklist') === 'full') return 'checklist';
+    if(tabAccess('summary') !== 'hidden') return 'summary';
+    return 'history';
+  }
+
+  function localDateStr(d){
+    const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
+    return y+'-'+m+'-'+day;
+  }
+  function formatDateLabel(d){
+    return d.toLocaleDateString('en-US',{weekday:'short', month:'short', day:'numeric'});
+  }
+
+  function showToast(msg){
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(()=>t.classList.remove('show'), 1800);
+  }
+
+  // === Supabase backend ===
+  // Config (URL + anon key) is injected at build time from .env via build.js
+  // into config.js as window.__APP_CONFIG__. See supabase/schema.sql for the
+  // tables + RLS policies that gate access by role.
+  const cfg = (typeof window !== 'undefined' && window.__APP_CONFIG__) || {};
+  const SUPABASE_URL = cfg.supabaseUrl || '';
+  const SUPABASE_ANON_KEY = cfg.supabaseAnonKey || '';
+
+  let supabase = null;
+  let session = null;
+  let me = null; // { email, full_name, role }
+
+  function sbConfigured(){
+    return !!SUPABASE_URL && !!SUPABASE_ANON_KEY
+      && !SUPABASE_URL.includes('YOUR-PROJECT')
+      && !SUPABASE_ANON_KEY.includes('YOUR-ANON');
+  }
+
+  function sbClient(){
+    if(!sbConfigured()) return null;
+    if(!supabase){
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: { persistSession: true, autoRefreshToken: true }
+      });
+    }
+    return supabase;
+  }
+
+  // All API calls use the logged-in user's session token, NOT the anon key.
+  // Anon key is only used by the SDK to identify the project for refresh.
+  function sbAuthHeaders(){
+    const token = session && session.access_token ? session.access_token : SUPABASE_ANON_KEY;
+    return {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + token,
+      'Content-Type': 'application/json'
+    };
+  }
+  function sbHeaders(extra){
+    return Object.assign(sbAuthHeaders(), extra || {});
+  }
+
+  // Fetch one day's saved report by date string ('2026-09-03'). Returns the
+  // full row (payload, updated_at, list_uploaded_at), or null if not found.
+  // Uses fetch() directly against PostgREST — the SDK is kept only for Auth.
+  async function sbGetDay(dateStr){
+    if(!sbConfigured()) return null;
+    const url = SUPABASE_URL + '/rest/v1/daily_reports?report_date=eq.' + encodeURIComponent(dateStr) + '&select=payload,updated_at,list_uploaded_at';
+    const res = await fetch(url, { headers: sbHeaders() });
+    if(!res.ok) throw new Error('Supabase read failed (' + res.status + ')');
+    const rows = await res.json();
+    return rows.length ? rows[0] : null;
+  }
+
+  // Upsert (insert or overwrite) one day's report. Pass stampUpload=true only
+  // from the "Save & start today's checklist" action — that's what tells the
+  // database to refresh list_uploaded_at (using the server's own clock, via
+  // the trg_stamp_list_uploaded_at trigger — the value sent here is only a
+  // change-signal, not the timestamp actually stored).
+  async function sbSaveDay(dateStr, payload, stampUpload){
+    if(!sbConfigured()) return;
+    const url = SUPABASE_URL + '/rest/v1/daily_reports?on_conflict=report_date';
+    const row = { report_date: dateStr, payload: payload, updated_at: new Date().toISOString() };
+    if(stampUpload) row.list_uploaded_at = new Date().toISOString();
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: sbHeaders({ 'Prefer': 'resolution=merge-duplicates' }),
+      body: JSON.stringify([row])
+    });
+    if(!res.ok) throw new Error('Supabase write failed (' + res.status + ')');
+  }
+
+  // List all archived days (excluding today), most recent first.
+  async function sbListDays(excludeDateStr){
+    if(!sbConfigured()) return [];
+    const url = SUPABASE_URL + '/rest/v1/daily_reports?select=report_date,payload,updated_at,list_uploaded_at&order=report_date.desc&report_date=neq.' + encodeURIComponent(excludeDateStr);
+    const res = await fetch(url, { headers: sbHeaders() });
+    if(!res.ok) throw new Error('Supabase list failed (' + res.status + ')');
+    return res.json();
+  }
+
+  // --- Staff management (managers only) ---
+  // Uses the logged-in user's session, so RLS applies: only hk_manager /
+  // fo_manager can read every row (staff self read covers the others).
+
+  async function sbListStaff(){
+    const client = sbClient();
+    if(!client || !session) return [];
+    const { data, error } = await client
+      .from('staff')
+      .select('email,full_name,role,active,created_at')
+      .order('created_at');
+    if(error) throw error;
+    return data || [];
+  }
+
+  // Upsert handles both add (new email) and edit (existing email).
+  async function sbUpsertStaff(row){
+    const client = sbClient();
+    if(!client || !session) return;
+    const { error } = await client
+      .from('staff')
+      .upsert(row, { onConflict: 'email' });
+    if(error) throw error;
+  }
+
+  async function sbSetStaffActive(email, active){
+    const client = sbClient();
+    if(!client || !session) return;
+    const { error } = await client
+      .from('staff')
+      .update({ active })
+      .eq('email', email);
+    if(error) throw error;
+  }
+
+  // Look up the current user in the staff table to get their role + display name.
+  // RLS on staff lets a user read their own row; managers can read everyone.
+  async function sbGetMe(){
+    const client = sbClient();
+    if(!client || !session) return null;
+    const { data, error } = await client
+      .from('staff')
+      .select('email,full_name,role,active')
+      .eq('email', session.user.email)
+      .maybeSingle();
+    if(error) throw error;
+    return data;
+  }
+
+  // Migrates older saved rooms (separate ticked/noLuggage booleans) to the
+  // single 'status' field: 'unconfirmed' | 'confirmed' | 'noluggage'.
+  // A room can't logically be both "confirmed occupied" and "no luggage" at
+  // once — no luggage is itself the finding, so it replaces a plain confirm.
+  function normalizeRooms(rooms){
+    return (rooms || []).map(r=>{
+      if(r.status) return r;
+      let status = 'unconfirmed';
+      if(r.noLuggage) status = 'noluggage';
+      else if(r.ticked) status = 'confirmed';
+      return Object.assign({}, r, { status });
+    });
+  }
+
+  async function loadState(){
+    if(!sbConfigured()){
+      state = { rooms: [], extras: [], confirmations: {} };
+      showToast('Supabase not configured yet — see the setup comment in the code');
+      return;
+    }
+    try{
+      const row = await sbGetDay(todayKey);
+      if(row && row.payload){
+        state = row.payload;
+        state.rooms = normalizeRooms(state.rooms);
+        state.extras = state.extras || [];
+        state.confirmations = state.confirmations || {};
+        listUploadedAt = row.list_uploaded_at || null;
+      } else {
+        state = { rooms: [], extras: [], confirmations: {} };
+        listUploadedAt = null;
+      }
+    }catch(e){
+      console.error(e);
+      state = { rooms: [], extras: [], confirmations: {} };
+      listUploadedAt = null;
+      showToast('Could not reach the server — check your connection');
+    }
+  }
+
+  // Pass stampUpload=true ONLY from the "Save & start today's checklist" handler.
+  // Every other save (tick, luggage, extra room, confirmation, unsign) must call
+  // saveState() with no argument so the tamper-proof trigger is not re-fired.
+  async function saveState(stampUpload){
+    try{
+      await sbSaveDay(todayKey, state, stampUpload);
+      if(stampUpload){
+        // Re-fetch so the UI shows the true server-stamped time, not a guess.
+        const row = await sbGetDay(todayKey);
+        listUploadedAt = (row && row.list_uploaded_at) ? row.list_uploaded_at : listUploadedAt;
+        renderSetup();
+      }
+    }catch(e){
+      console.error(e);
+      showToast('Save failed — check connection');
+    }
+  }
+
+  const MONTHS = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+
+  // Formats a timestamptz ISO string from the server into a human-readable label.
+  function formatUploadTime(iso){
+    if(!iso) return '';
+    const d = new Date(iso);
+    if(isNaN(d.getTime())) return '';
+    return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function fixYear(y){
+    y = parseInt(y,10);
+    if(y < 100) y += (y < 70 ? 2000 : 1900);
+    return y;
+  }
+
+  // Finds every date-looking substring in a line (Oracle "03-SEP-26", numeric "03-09-26",
+  // "03/09/2026", "2026-09-03", "03.09.2026") and returns the earliest as arrival and the
+  // latest as departure — since arrival is always on/before departure, this works regardless
+  // of which column order the export uses.
+  function extractDateRange(line){
+    const patterns = [
+      /\b(\d{1,2})-([A-Za-z]{3})-(\d{2,4})\b/g,   // 03-SEP-26
+      /\b(\d{4})-(\d{1,2})-(\d{1,2})\b/g,          // 2026-09-03 (ISO)
+      /\b(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b/g,      // 03/09/2026
+      /\b(\d{1,2})\.(\d{1,2})\.(\d{2,4})\b/g,      // 03.09.2026
+      /\b(\d{1,2})-(\d{1,2})-(\d{2,4})\b/g         // 03-09-26 (numeric, DD-MM-YY)
+    ];
+    let matches = [];
+    for(const re of patterns){
+      let m;
+      while((m = re.exec(line)) !== null){
+        let d = null;
+        if(re === patterns[0]){
+          const mon = MONTHS[m[2].toLowerCase()];
+          if(mon !== undefined) d = new Date(fixYear(m[3]), mon, parseInt(m[1],10));
+        } else if(re === patterns[1]){
+          d = new Date(parseInt(m[1],10), parseInt(m[2],10)-1, parseInt(m[3],10));
+        } else {
+          // slash / dot / numeric-dash: treat as DD-MM-YYYY
+          d = new Date(fixYear(m[3]), parseInt(m[2],10)-1, parseInt(m[1],10));
+        }
+        if(d && !isNaN(d.getTime())){
+          matches.push({ date: d, text: m[0] });
+        }
+      }
+    }
+    if(matches.length === 0) return { arrival: '', departure: '' };
+    matches.sort((a,b)=> a.date.getTime() - b.date.getTime());
+    const arrival = matches[0].text;
+    const departure = matches.length > 1 ? matches[matches.length-1].text : '';
+    return { arrival, departure };
+  }
+
+  // Splits a report line into columns whether it was exported tab-delimited,
+  // comma-delimited, or just padded with multiple spaces (common when pasted
+  // straight from a PDF/print preview).
+  function splitColumns(line){
+    if(line.includes('\t')) return line.split('\t').map(s=>s.trim()).filter(Boolean);
+    if(line.includes(',')) return line.split(',').map(s=>s.trim()).filter(Boolean);
+    return line.split(/\s{2,}/).map(s=>s.trim()).filter(Boolean);
+  }
+
+  function parsePaste(text){
+    const lines = text.split('\n').map(l=>l.trim()).filter(Boolean);
+    const rooms = [];
+    let skipped = 0;
+    const seen = new Set();
+    for(const line of lines){
+      const cols = splitColumns(line);
+      const first = (cols[0] || '').replace(/^room\s*/i,'').trim();
+      // A real room line starts with a room number (3-5 digits, optionally one
+      // trailing letter). Requiring 3+ digits avoids false positives from
+      // wrapped two-line columns (e.g. a block code wrapping to just "26").
+      // Column headers, report titles, page totals, and separator dashes are
+      // skipped rather than guessed at.
+      const roomMatch = first.match(/^(\d{3,5}[A-Za-z]?)$/);
+      if(!roomMatch){ if(line) skipped++; continue; }
+      const room = roomMatch[1];
+      if(seen.has(room)) continue;
+      seen.add(room);
+      const { arrival, departure } = extractDateRange(line);
+      rooms.push({ room, arrival, departure, status: 'unconfirmed' });
+    }
+    rooms.sort((a,b)=> (parseInt(a.room)||0) - (parseInt(b.room)||0) || a.room.localeCompare(b.room));
+    return { rooms, skipped };
+  }
+
+  // --- PDF upload support ---
+  // Real PMS "Guests In House"-style PDFs extract as garbled column-major text
+  // when copy-pasted normally. Using pdf.js position data, we regroup text
+  // items into visual rows (by y-coordinate) and order left-to-right (by x),
+  // which reconstructs clean per-guest rows regardless of copy-paste behavior.
+  function reconstructRowsFromItems(items){
+    const byY = {};
+    items.forEach(it=>{
+      const key = Math.round(it.y);
+      byY[key] = byY[key] || [];
+      byY[key].push(it);
+    });
+    const ys = Object.keys(byY).map(Number).sort((a,b)=>b-a);
+    return ys.map(y => byY[y].sort((a,b)=>a.x-b.x).map(it=>it.str.trim()).filter(Boolean).join('\t'));
+  }
+
+  async function extractTextFromPdf(file){
+    const buf = await file.arrayBuffer();
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+    const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+    let allLines = [];
+    for(let p=1; p<=doc.numPages; p++){
+      const page = await doc.getPage(p);
+      const content = await page.getTextContent();
+      const items = content.items.map(it => ({ str: it.str, x: it.transform[4], y: it.transform[5] }));
+      allLines = allLines.concat(reconstructRowsFromItems(items));
+    }
+    return allLines.join('\n');
+  }
+
+  function checkSvg(){
+    return '<svg viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></svg>';
+  }
+  function luggageSvg(){
+    return '<svg viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="12" rx="1.5"/><path d="M9 8V6a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>';
+  }
+  function trashSvg(){
+    return '<svg viewBox="0 0 24 24"><path d="M5 7h14M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-8 0l1 13h8l1-13"/></svg>';
+  }
+
+  // ============================================================
+  // Staff management UI (managers only)
+  // ============================================================
+  let staffRows = [];
+  let staffEditEmail = null; // null = adding new staff
+
+  async function loadStaffList(){
+    const wrap = document.getElementById('staffList');
+    try{
+      staffRows = (await sbListStaff()).filter(r => ROLE_DEPT[r.role] === myDept());
+      applyDeptRoleOptions();
+      renderStaff();
+    }catch(e){
+      console.error(e);
+      wrap.innerHTML = '<div class="empty">Could not load the staff list.</div>';
+    }
+  }
+
+  function deptManagerCount(){
+    const mgrRole = myDept() === 'hk' ? 'hk_manager' : 'fo_manager';
+    return staffRows.filter(r => r.role === mgrRole).length;
+  }
+
+  // A save/toggle that would demote or disable the LAST manager is blocked —
+  // a manager must always exist so staff-admin RLS can't lock everyone out.
+  // Returns an error message, or '' if the change is allowed.
+  function lastManagerError(candidateEmail, newRole, newActive){
+    const row = staffRows.find(r => r.email === candidateEmail);
+    if(!row) return '';
+    const wasMgr = row.role === 'hk_manager' || row.role === 'fo_manager';
+    const nowMgr = newRole === 'hk_manager' || newRole === 'fo_manager';
+    const demoteOrDisable = (wasMgr && !nowMgr) || (wasMgr && nowMgr && !newActive);
+    if(demoteOrDisable && deptManagerCount() <= 1){
+      return "Can't demote or disable the last manager in your department — you'd lock your department out of staff management.";
+    }
+    return '';
+  }
+
+  function staffRoleChip(role){
+    const dept = ROLE_DEPT[role] || '';
+    return `<span class="role-chip ${dept === 'hk' ? 'chip-hk' : 'chip-fo'}">${escapeHtml(ROLE_LABELS[role] || role)}</span>`;
+  }
+
+  // Strictly departmental: the role dropdown only offers the current manager's
+  // own department's roles. Static optgroups are restored on sign-out
+  // (sectionOriginal), so filtering here is enough.
+  function applyDeptRoleOptions(){
+    const sel = document.getElementById('staffRoleSelect');
+    if(!sel) return;
+    const dept = myDept();
+    Array.prototype.forEach.call(sel.querySelectorAll('optgroup'), g=>{
+      const show = (dept === 'hk' && g.label === 'Housekeeping') || (dept === 'fo' && g.label === 'Front Desk');
+      g.style.display = show ? '' : 'none';
+    });
+  }
+
+  function renderStaff(){
+    const wrap = document.getElementById('staffList');
+    if(!staffRows.length){
+      wrap.innerHTML = '<div class="empty">No ' + (myDept() === 'hk' ? 'Housekeeping' : 'Front Desk') + ' staff yet — add the first person below.</div>';
+      return;
+    }
+    wrap.innerHTML = staffRows.map(row=>{
+      const isMe = me && row.email === me.email;
+      const name = escapeHtml(row.full_name);
+      const email = escapeHtml(row.email);
+      const active = row.active === false ? ' <span class="act-off">(inactive)</span>' : '';
+      const status = row.active === false
+        ? '<span class="badge-soft">Inactive</span>'
+        : '<span class="badge-soft">Active</span>';
+      const controls = isMe
+        ? ''
+        : `<button class="link-btn btn-sm" data-action="staffEdit" data-email="${email}">Edit</button>` +
+          `<button class="link-btn btn-sm" data-action="staffToggle" data-email="${email}" data-active="${row.active === false ? '0' : '1'}">${row.active === false ? 'Re-enable' : 'Deactivate'}</button>`;
+      return `<li>
+        <div class="staff-row">
+          <div class="staff-main">
+            <div class="staff-name">${name} ${isMe ? '<span class="you-tag">You</span>' : ''}</div>
+            <div class="staff-email mono">${email}${active}</div>
+            <div class="staff-chip">${staffRoleChip(row.role)} ${status}</div>
+          </div>
+          <div class="staff-controls">${controls}</div>
+        </div>
+      </li>`;
+    }).join('');
+  }
+
+  function openStaffForm(email, role, active, name){
+    staffEditEmail = email;
+    applyDeptRoleOptions();
+    document.getElementById('staffFormTitle').textContent = email ? 'Edit staff' : 'Add staff';
+    document.getElementById('staffNameInput').value = name || '';
+    document.getElementById('staffEmailInput').value = email || '';
+    document.getElementById('staffEmailInput').disabled = !!email; // email = PK
+    document.getElementById('staffRoleSelect').value = role || '';
+    document.getElementById('staffActiveCheck').checked = (active !== false);
+    document.getElementById('staffFormWrap').classList.remove('hidden');
+    document.getElementById('staffAddBtn').style.display = 'none';
+    document.getElementById('staffHint').style.display = 'none';
+  }
+  function closeStaffForm(){
+    staffEditEmail = null;
+    document.getElementById('staffFormWrap').classList.add('hidden');
+    document.getElementById('staffAddBtn').style.display = '';
+    document.getElementById('staffHint').style.display = 'none';
+  }
+
+  async function saveStaffForm(){
+    const name = document.getElementById('staffNameInput').value.trim();
+    const email = document.getElementById('staffEmailInput').value.trim().toLowerCase();
+    const role = document.getElementById('staffRoleSelect').value;
+    const active = document.getElementById('staffActiveCheck').checked;
+    if(!name){ showToast('Enter a full name'); return; }
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ showToast('Enter a valid email'); return; }
+    if(!role){ showToast('Pick a role'); return; }
+    if(ROLE_DEPT[role] !== myDept()){ showToast('Pick a role in your department'); return; }
+
+    const err = lastManagerError(email, role, active);
+    if(err){ showToast(err); return; }
+
+    let isNew = false;
+    try{
+      isNew = !staffRows.some(r => r.email === email);
+      await sbUpsertStaff({ email, full_name: name, role, active });
+    }catch(e){
+      console.error(e);
+      showToast('Could not save — check you have manager access');
+      return;
+    }
+
+    closeStaffForm();
+    await loadStaffList();
+    // Can't verify auth.users from the client; show the login hint.
+    if(isNew){
+      const hint = document.getElementById('staffHint');
+      hint.textContent = 'Saved. They can\'t sign in yet — a login account must exist in Supabase → Authentication → Users with the same email first.';
+      hint.style.display = '';
+    }
+    showToast('Staff saved');
+  }
+
+  async function toggleStaffActive(email, active){
+    const err = lastManagerError(email, 'hk_manager', active);
+    if(err){ showToast(err); return; }
+    try{
+      await sbSetStaffActive(email, active);
+    }catch(e){
+      console.error(e);
+      showToast('Could not update — check you have manager access');
+      return;
+    }
+    await loadStaffList();
+    showToast(active ? 'Account re-enabled' : 'Account deactivated');
+  }
+
+  function renderSetup(){
+    const wrap = document.getElementById('currentListPreview');
+    document.getElementById('currentListTitle').textContent = 'Current list — ' + state.rooms.length + ' rooms';
+    const timeLabel = document.getElementById('uploadTimeLabel');
+    timeLabel.textContent = listUploadedAt ? 'Uploaded ' + formatUploadTime(listUploadedAt) + ' (server-verified time)' : '';
+    wrap.innerHTML = '';
+    if(state.rooms.length === 0){
+      wrap.innerHTML = '<div class="empty">No list saved for today yet.</div>';
+      return;
+    }
+    state.rooms.forEach(r=>{
+      const li = document.createElement('li');
+      li.innerHTML = `<div class="room-row">
+        <div class="room-main">
+          <div class="room-num mono">Room ${r.room}</div>
+          ${(r.arrival||r.departure) ? `<div class="room-arrival">${formatStayLine(r)}</div>` : ''}
+        </div>
+      </div>`;
+      wrap.appendChild(li);
+    });
+  }
+
+  function renderChecklist(){
+    const wrap = document.getElementById('checklistList');
+    wrap.innerHTML = '';
+    const confirmedOnly = state.rooms.filter(r=> r.status === 'confirmed').length;
+    document.getElementById('statConfirmed').textContent = confirmedOnly + '/' + state.rooms.length;
+    document.getElementById('statLuggage').textContent = state.rooms.filter(r=>r.status === 'noluggage').length;
+
+    if(state.rooms.length === 0){
+      wrap.innerHTML = '<div class="empty">No rooms loaded yet. Ask Front Desk to save the list for today in Setup.</div>';
+      return;
+    }
+
+    const indexed = state.rooms.map((r, idx) => ({ r, idx }));
+    const filtered = checklistFilter ? indexed.filter(x => x.r.room.includes(checklistFilter)) : indexed;
+
+    if(filtered.length === 0){
+      wrap.innerHTML = '<div class="empty">No room matches "' + escapeHtml(checklistFilter) + '".</div>';
+      return;
+    }
+
+    filtered.forEach(({r, idx})=>{
+      const li = document.createElement('li');
+      const tickClass = r.status === 'confirmed' ? 'on' : (r.status === 'noluggage' ? 'flagged' : '');
+      const luggageClass = r.status === 'noluggage' ? 'flagged' : '';
+      li.innerHTML = `<div class="room-row">
+        <div class="room-tick ${tickClass}" data-idx="${idx}" data-action="tick">${checkSvg()}</div>
+        <div class="room-main" data-idx="${idx}" data-action="tick">
+          <div class="room-num mono">Room ${r.room}</div>
+          ${(r.arrival||r.departure) ? `<div class="room-arrival">${formatStayLine(r)}</div>` : ''}
+        </div>
+        <button class="luggage-btn ${luggageClass}" data-idx="${idx}" data-action="luggage">${luggageSvg()}</button>
+      </div>`;
+      wrap.appendChild(li);
+    });
+  }
+
+  function renderExtra(){
+    const wrap = document.getElementById('extraList');
+    wrap.innerHTML = '';
+    if(state.extras.length === 0){
+      wrap.innerHTML = '<div class="empty">No extra rooms reported.</div>';
+    } else {
+      state.extras.forEach((ex, idx)=>{
+        const li = document.createElement('li');
+        li.innerHTML = `<div class="extra-row">
+          <div class="room-num mono">Room ${ex.room}</div>
+          <button class="trash-btn" data-idx="${idx}" data-action="removeExtra">${trashSvg()}</button>
+        </div>`;
+        wrap.appendChild(li);
+      });
+    }
+    const extraNav = document.getElementById('extraNavBtn');
+    if(extraNav){
+      extraNav.classList.toggle('badge', state.extras.length>0);
+      if(state.extras.length>0) extraNav.setAttribute('data-count', state.extras.length);
+    }
+  }
+
+  function computeSummaryFor(rawRooms, extras){
+    const rooms = normalizeRooms(rawRooms);
+    const unticked = rooms.filter(r=> r.status !== 'confirmed' && r.status !== 'noluggage');
+    const noLuggage = rooms.filter(r=> r.status === 'noluggage');
+    return { unticked, noLuggage, extras: extras || [] };
+  }
+
+  function computeSummary(){
+    return computeSummaryFor(state.rooms, state.extras);
+  }
+
+  function renderSummary(){
+    const {unticked, noLuggage, extras} = computeSummary();
+    document.getElementById('statDiscrepancies').textContent = unticked.length + extras.length;
+    document.getElementById('statNoLuggageSum').textContent = noLuggage.length;
+
+    const utWrap = document.getElementById('sumUnticked');
+    utWrap.innerHTML = unticked.length ? unticked.map(r=>`<li class="summary-item"><div class="room-num mono">Room ${r.room}</div>${(r.arrival||r.departure)?`<div class="note">${formatStayLine(r)}</div>`:''}</li>`).join('') : '<div class="empty">None — every listed room was confirmed.</div>';
+
+    const exWrap = document.getElementById('sumExtras');
+    exWrap.innerHTML = extras.length ? extras.map(r=>`<li class="summary-item"><div class="room-num mono">Room ${r.room}</div></li>`).join('') : '<div class="empty">None reported.</div>';
+
+    const lgWrap = document.getElementById('sumLuggage');
+    lgWrap.innerHTML = noLuggage.length ? noLuggage.map(r=>`<li class="summary-item"><div class="room-num mono">Room ${r.room}</div></li>`).join('') : '<div class="empty">None flagged.</div>';
+
+    const summaryNav = document.getElementById('summaryNavBtn');
+    if(summaryNav){
+      summaryNav.classList.toggle('badge', (unticked.length+extras.length)>0);
+      if((unticked.length+extras.length)>0) summaryNav.setAttribute('data-count', unticked.length+extras.length);
+    }
+
+    document.getElementById('emailPreview').textContent = buildEmailText(unticked, extras, noLuggage);
+    renderSignOffs();
+  }
+
+  function renderSignBlock(elId, role, label){
+    const el = document.getElementById(elId);
+    // Sign-off is supervisor/manager only (roles-implementation-plan.md).
+    // Hidden sides are NOT mounted at all — nothing to re-enable in dev tools.
+    if(!canConfirm(role)){
+      el.innerHTML = '';
+      return;
+    }
+    const rec = (state.confirmations || {})[role];
+    const canSign = true; // gated by canConfirm(role) above
+    if(rec && rec.name){
+      el.innerHTML = `<div class="sign-block" data-role="${role}"><div class="sign-done">
+        <div class="sign-done-text">
+          <div class="sign-label">${label}</div>
+          <div class="sign-name">${rec.name}</div>
+          <div class="sign-time mono">Confirmed ${rec.time}</div>
+        </div>
+        <div class="sign-check">${checkSvg()}</div>
+      </div>
+      ${canSign ? `<button class="link-btn" data-action="unsign" data-role="${role}">Undo</button>` : ''}
+      </div>`;
+    } else if(canSign){
+      el.innerHTML = `<div class="sign-block" data-role="${role}">
+        <div class="sign-label" style="margin-bottom:8px;">${label}</div>
+        <button class="btn-secondary" data-action="sign" data-role="${role}">Confirm as ${escapeHtml(me.full_name)}</button>
+      </div>`;
+    } else {
+      el.innerHTML = `<div class="sign-block" data-role="${role}">
+        <div class="sign-label">${label}</div>
+        <div class="panel-label" style="margin-top:6px;">Waiting for ${role === 'housekeeping' ? 'Housekeeping' : 'Front Desk'} to confirm.</div>
+      </div>`;
+    }
+  }
+
+  function renderSignOffs(){
+    renderSignBlock('signHK', 'housekeeping', 'Housekeeping');
+    renderSignBlock('signFO', 'frontdesk', 'Front Desk');
+  }
+
+  function buildEmailText(unticked, extras, noLuggage){
+    const dateStr = document.getElementById('dateLabel').textContent;
+    let lines = [];
+    lines.push('Subject: Room Discrepancy Report – ' + dateStr);
+    lines.push('');
+    lines.push('Hi Front Desk,');
+    lines.push('');
+    lines.push('The room check for today is complete. Summary below:');
+    lines.push('');
+    if(unticked.length === 0 && extras.length === 0){
+      lines.push('No discrepancies found — all listed rooms were confirmed occupied.');
+    } else {
+      if(unticked.length){
+        lines.push('Listed but not confirmed occupied:');
+        unticked.forEach(r=> lines.push('- Room ' + r.room + (r.arrival ? ' (arrival: ' + r.arrival + (r.departure ? ', departure: ' + r.departure : '') + ')' : '')));
+        lines.push('');
+      }
+      if(extras.length){
+        lines.push('Found occupied but not on the list:');
+        extras.forEach(r=> lines.push('- Room ' + r.room));
+        lines.push('');
+      }
+    }
+    if(noLuggage.length){
+      lines.push('No luggage observed in:');
+      noLuggage.forEach(r=> lines.push('- Room ' + r.room));
+      lines.push('');
+    }
+    lines.push('Original physical copy to follow.');
+    lines.push('');
+    const hk = (state.confirmations || {}).housekeeping;
+    const fo = (state.confirmations || {}).frontdesk;
+    if(hk && hk.name){
+      lines.push('Confirmed by Housekeeping: ' + hk.name + ' (' + hk.time + ')');
+    }
+    if(fo && fo.name){
+      lines.push('Confirmed received by Front Desk: ' + fo.name + ' (' + fo.time + ')');
+    }
+    if(hk && hk.name) lines.push('');
+    lines.push('Thanks,');
+    lines.push('Housekeeping');
+    return lines.join('\n');
+  }
+
+  function escapeHtml(str){
+    return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function formatStayLine(r){
+    const parts = [];
+    if(r.arrival) parts.push('Arrival: ' + r.arrival);
+    if(r.departure) parts.push('Departure: ' + r.departure);
+    return parts.join(' · ');
+  }
+
+  function printTableOrNone(rows, cols, noneText){
+    if(!rows.length) return '<div class="print-none">' + noneText + '</div>';
+    const head = '<tr>' + cols.map(c=>'<th>'+c+'</th>').join('') + '</tr>';
+    const body = rows.map(r=>'<tr>' + cols.map(c=>'<td>'+escapeHtml(r[c]||'')+'</td>').join('') + '</tr>').join('');
+    return '<table class="print-table"><thead>'+head+'</thead><tbody>'+body+'</tbody></table>';
+  }
+
+  function buildPrintHtmlFor(dateStr, total, unticked, extras, noLuggage, confirmations, uploadedAt){
+    const hk = (confirmations || {}).housekeeping || {};
+    const fo = (confirmations || {}).frontdesk || {};
+    const discCount = unticked.length + extras.length;
+
+    let html = '';
+    html += '<div class="print-header"><h1>Room Discrepancy Report</h1><div class="print-date">'+escapeHtml(dateStr)+'</div></div>';
+    html += '<div class="print-meta">'
+          + '<div>Rooms on list: <b>'+total+'</b></div>'
+          + '<div>Discrepancies: <b>'+discCount+'</b></div>'
+          + '<div>No luggage: <b>'+noLuggage.length+'</b></div>'
+          + (uploadedAt ? '<div>List uploaded: <b>'+escapeHtml(formatUploadTime(uploadedAt))+'</b></div>' : '')
+          + '</div>';
+
+    html += '<div class="print-section"><h2>Listed but not confirmed occupied</h2>' +
+      printTableOrNone(unticked.map(r=>({Room:r.room, Arrival:r.arrival||'—', Departure:r.departure||'—'})), ['Room','Arrival','Departure'], 'None — every listed room was confirmed.') +
+      '</div>';
+
+    html += '<div class="print-section"><h2>Found occupied, not on list</h2>' +
+      printTableOrNone(extras.map(r=>({Room:r.room})), ['Room'], 'None reported.') +
+      '</div>';
+
+    html += '<div class="print-section"><h2>No luggage in room</h2>' +
+      printTableOrNone(noLuggage.map(r=>({Room:r.room})), ['Room'], 'None flagged.') +
+      '</div>';
+
+    html += '<div class="print-signatures">'
+          + '<div class="print-sig"><div class="sig-line">'+(hk.name ? escapeHtml(hk.name)+' — '+escapeHtml(hk.time) : '&nbsp;')+'</div><div class="sig-role">Housekeeping</div></div>'
+          + '<div class="print-sig"><div class="sig-line">'+(fo.name ? escapeHtml(fo.name)+' — '+escapeHtml(fo.time) : '&nbsp;')+'</div><div class="sig-role">Front Desk</div></div>'
+          + '</div>';
+
+    return html;
+  }
+
+  function buildPrintHtml(unticked, extras, noLuggage){
+    const dateStr = document.getElementById('dateLabel').textContent;
+    return buildPrintHtmlFor(dateStr, state.rooms.length, unticked, extras, noLuggage, state.confirmations, listUploadedAt);
+  }
+
+  async function loadHistoryList(){
+    const wrap = document.getElementById('historyListItems');
+    wrap.innerHTML = '<div class="empty">Loading…</div>';
+    if(!sbConfigured()){
+      wrap.innerHTML = '<div class="empty">Supabase not configured yet.</div>';
+      return;
+    }
+    try{
+      historyRows = await sbListDays(todayKey);
+      if(!historyRows.length){
+        wrap.innerHTML = '<div class="empty">No past reports yet — they will appear here once you start saving daily lists.</div>';
+        return;
+      }
+      wrap.innerHTML = historyRows.map(row=>{
+        const payload = row.payload || {};
+        const rooms = payload.rooms || [];
+        const extras = payload.extras || [];
+        const { unticked } = computeSummaryFor(rooms, extras);
+        const discCount = unticked.length + extras.length;
+        return '<li><div class="room-row" data-action="viewHistory" data-date="'+row.report_date+'" style="cursor:pointer;">'
+          + '<div class="room-main">'
+          + '<div class="room-num mono">'+row.report_date+'</div>'
+          + '<div class="room-arrival">'+rooms.length+' rooms · '+discCount+' discrepanc'+(discCount===1?'y':'ies')+(row.list_uploaded_at ? ' · uploaded '+formatUploadTime(row.list_uploaded_at) : '')+'</div>'
+          + '</div></div></li>';
+      }).join('');
+    }catch(e){
+      console.error(e);
+      wrap.innerHTML = '<div class="empty">Could not load history — check your connection.</div>';
+    }
+  }
+
+  function renderHistoryDetail(dateStr, payload, uploadedAt){
+    historyViewing = { dateStr, payload, uploadedAt };
+    const rooms = payload.rooms || [];
+    const extras = payload.extras || [];
+    const { unticked, noLuggage } = computeSummaryFor(rooms, extras);
+    const hk = (payload.confirmations || {}).housekeeping || {};
+    const fo = (payload.confirmations || {}).frontdesk || {};
+
+    let html = '';
+    html += '<div class="stat-row">'
+      + '<div class="stat alert"><div class="num">'+(unticked.length+extras.length)+'</div><div class="lbl">total discrepancies</div></div>'
+      + '<div class="stat"><div class="num">'+noLuggage.length+'</div><div class="lbl">no luggage</div></div>'
+      + '</div>';
+    html += '<div class="summary-block"><div class="summary-head"><span class="dot alert"></span><h3>Listed but not confirmed occupied</h3></div><ul>' +
+      (unticked.length ? unticked.map(r=>'<li class="summary-item"><div class="room-num mono">Room '+r.room+'</div>'+((r.arrival||r.departure)?'<div class="note">'+formatStayLine(r)+'</div>':'')+'</li>').join('') : '<div class="empty">None.</div>') +
+      '</ul></div>';
+    html += '<div class="summary-block"><div class="summary-head"><span class="dot alert"></span><h3>Found occupied, not on list</h3></div><ul>' +
+      (extras.length ? extras.map(r=>'<li class="summary-item"><div class="room-num mono">Room '+r.room+'</div></li>').join('') : '<div class="empty">None.</div>') +
+      '</ul></div>';
+    html += '<div class="summary-block"><div class="summary-head"><span class="dot pending"></span><h3>No luggage in room</h3></div><ul>' +
+      (noLuggage.length ? noLuggage.map(r=>'<li class="summary-item"><div class="room-num mono">Room '+r.room+'</div></li>').join('') : '<div class="empty">None.</div>') +
+      '</ul></div>';
+    html += '<div class="panel-title">Confirmation</div>';
+    html += '<p class="panel-label">Housekeeping: '+(hk.name ? escapeHtml(hk.name)+' — '+escapeHtml(hk.time) : 'Not confirmed')+'<br>Front Desk: '+(fo.name ? escapeHtml(fo.name)+' — '+escapeHtml(fo.time) : 'Not confirmed')+'</p>';
+    if(uploadedAt){
+      html += '<p class="panel-label">List uploaded: ' + escapeHtml(formatUploadTime(uploadedAt)) + ' (server-verified time)</p>';
+    }
+
+    document.getElementById('historyDetailBody').innerHTML = html;
+    document.getElementById('historyList').classList.add('hidden');
+    document.getElementById('historyDetail').classList.remove('hidden');
+  }
+
+  function renderAll(){
+    if(tabAccess('setup') !== 'hidden')     renderSetup();
+    if(tabAccess('checklist') !== 'hidden') renderChecklist();
+    if(tabAccess('extra') !== 'hidden')     renderExtra();
+    if(tabAccess('summary') !== 'hidden')   renderSummary();
+    if(tabAccess('staff') !== 'hidden')     loadStaffList();
+    applyRoleGatingToDOM();
+  }
+
+  // Called just after sign-in, BEFORE renderAll: restore the pristine static
+  // markup of every section the current role can access (covers sign-out →
+  // sign-in as another role, where hidden tabs had their controls stripped).
+  function applyRoleGatingBeforeRender(){
+    ['setup','checklist','extra','summary','history','staff'].forEach(tab=>{
+      if(tabAccess(tab) !== 'hidden'){
+        document.getElementById('tab-'+tab).innerHTML = sectionOriginal[tab];
+      }
+    });
+    wireStaticListeners();
+  }
+
+  // Applies the current role's gating to every section. Idempotent — safe to run
+  // after every re-render:
+  //   hidden → interactive controls un-mounted (nothing to inspect/re-enable)
+  //   view   → "Read-only" banner + every control disabled/dimmed
+  //   full   → controls re-enabled, banner removed
+  function applyRoleGatingToDOM(){
+    ['setup','checklist','extra','summary','history','staff'].forEach(tab=>{
+      const section = document.getElementById('tab-'+tab);
+      const access = tabAccess(tab);
+      section.querySelectorAll('.readonly-banner').forEach(b=>b.remove());
+      section.classList.remove('is-readonly');
+      if(access === 'hidden'){
+        Array.prototype.forEach.call(
+          section.querySelectorAll('button, input, textarea'),
+          el => el.remove()
+        );
+        Array.prototype.forEach.call(
+          section.querySelectorAll('.needs-fd, .row-input'),
+          el => el.remove()
+        );
+      } else if(access === 'view'){
+        const banner = document.createElement('div');
+        banner.className = 'readonly-banner';
+        banner.textContent = roMsg(tab);
+        section.insertAdjacentElement('afterbegin', banner);
+        section.classList.add('is-readonly');
+        Array.prototype.forEach.call(
+          section.querySelectorAll('button, input, textarea'),
+          el => { el.disabled = true; }
+        );
+      } else {
+        Array.prototype.forEach.call(
+          section.querySelectorAll('button, input, textarea'),
+          el => { el.disabled = false; }
+        );
+      }
+    });
+
+    // "Confirmation" panel only makes sense when the role can sign at least one side.
+    const confirmTitle = document.getElementById('confirmationTitle');
+    if(confirmTitle){
+      confirmTitle.style.display =
+        (canConfirm('housekeeping') || canConfirm('frontdesk')) ? '' : 'none';
+    }
+  }
+
+  function wireStaticListeners(){
+    const pb = document.getElementById('pasteBox');
+    if(pb && !pb.dataset.wired){
+      pb.addEventListener('input', updateParsePreview);
+      pb.dataset.wired = '1';
+    }
+    const pi = document.getElementById('pdfInput');
+    if(pi && !pi.dataset.wired){
+      pi.addEventListener('change', onPdfInputChange);
+      pi.dataset.wired = '1';
+    }
+    const rs = document.getElementById('roomSearchInput');
+    if(rs && !rs.dataset.wired){
+      rs.addEventListener('input', onRoomSearchInput);
+      rs.dataset.wired = '1';
+    }
+  }
+
+  function switchTab(tab){
+    if(tabAccess(tab) === 'hidden'){
+      showToast("This section isn't available to your role.");
+      return;
+    }
+    activeTab = tab;
+    ['setup','checklist','extra','summary','history','staff'].forEach(t=>{
+      document.getElementById('tab-'+t).classList.toggle('hidden', t!==tab);
+    });
+    document.querySelectorAll('.tab-btn').forEach(b=>{
+      b.classList.toggle('active', b.getAttribute('data-tab')===tab);
+    });
+    if(tab === 'history'){
+      document.getElementById('historyDetail').classList.add('hidden');
+      document.getElementById('historyList').classList.remove('hidden');
+      loadHistoryList();
+    }
+  }
+
+  // Event wiring
+  document.addEventListener('click', async (e)=>{
+    const navBtn = e.target.closest('.tab-btn');
+    if(navBtn){ switchTab(navBtn.getAttribute('data-tab')); return; }
+
+    if(e.target.id === 'saveListBtn'){
+      if(tabAccess('setup') !== 'full'){
+        showToast("Only Front Desk staff can save today's list.");
+        return;
+      }
+      const text = document.getElementById('pasteBox').value;
+      const { rooms: parsed } = parsePaste(text);
+      if(parsed.length === 0){ showToast('No rooms detected — check the pasted text'); return; }
+      const hasProgress = state.rooms.some(r=>r.status === 'confirmed' || r.status === 'noluggage');
+      if(hasProgress && !confirm('This will replace the list for today and clear existing progress. Continue?')) return;
+      state.rooms = parsed;
+      state.extras = state.extras || [];
+      state.confirmations = {};
+      // stampUpload=true: this is the ONLY call site that triggers the server-side
+      // timestamp refresh. All other saveState() calls must pass no argument.
+      await saveState(true);
+      document.getElementById('pasteBox').value = '';
+      document.getElementById('parsePreview').innerHTML = '';
+      renderAll();
+      showToast('List saved — ' + parsed.length + ' rooms');
+      return;
+    }
+
+    if(e.target.id === 'addExtraBtn'){
+      if(tabAccess('extra') !== 'full'){
+        showToast("Read-only view — you can't add extra rooms.");
+        return;
+      }
+      const input = document.getElementById('extraRoomInput');
+      const room = input.value.trim();
+      if(!room){ showToast('Enter a room number'); return; }
+      state.extras.push({ room });
+      await saveState();
+      input.value = '';
+      renderExtra();
+      renderSummary();
+      showToast('Room ' + room + ' added as extra');
+      return;
+    }
+
+    const tickTarget = e.target.closest('[data-action="tick"]');
+    if(tickTarget){
+      if(tabAccess('checklist') !== 'full'){
+        showToast("Read-only view — you can't tick rooms.");
+        return;
+      }
+      const idx = parseInt(tickTarget.getAttribute('data-idx'));
+      const r = state.rooms[idx];
+      // Confirming or un-confirming always clears any "no luggage" flag too —
+      // a room can only be in one state at a time.
+      r.status = (r.status === 'confirmed' || r.status === 'noluggage') ? 'unconfirmed' : 'confirmed';
+      await saveState();
+      renderChecklist();
+      renderSummary();
+      return;
+    }
+
+    const luggageTarget = e.target.closest('[data-action="luggage"]');
+    if(luggageTarget){
+      if(tabAccess('checklist') !== 'full'){
+        showToast("Read-only view — you can't flag no-luggage.");
+        return;
+      }
+      const idx = parseInt(luggageTarget.getAttribute('data-idx'));
+      const r = state.rooms[idx];
+      // Flagging "no luggage" replaces a plain confirm — finding no luggage
+      // is itself the finding, so the two can't both be true at once.
+      r.status = (r.status === 'noluggage') ? 'confirmed' : 'noluggage';
+      await saveState();
+      renderChecklist();
+      renderSummary();
+      return;
+    }
+
+    const removeExtraTarget = e.target.closest('[data-action="removeExtra"]');
+    if(removeExtraTarget){
+      if(tabAccess('extra') !== 'full'){
+        showToast("Read-only view — you can't remove extra rooms.");
+        return;
+      }
+      const idx = parseInt(removeExtraTarget.getAttribute('data-idx'));
+      state.extras.splice(idx,1);
+      await saveState();
+      renderExtra();
+      renderSummary();
+      return;
+    }
+
+    // ---- Staff management (managers only) ----
+    if(e.target.id === 'staffAddBtn'){
+      if(tabAccess('staff') !== 'full'){ showToast("Staff management isn't available to your role."); return; }
+      openStaffForm(null, '', true, '');
+      return;
+    }
+    if(e.target.id === 'staffCancelBtn'){
+      closeStaffForm();
+      return;
+    }
+    if(e.target.id === 'staffSaveBtn'){
+      if(tabAccess('staff') !== 'full'){ showToast("Staff management isn't available to your role."); return; }
+      saveStaffForm();
+      return;
+    }
+
+    const staffEditBtn = e.target.closest('[data-action="staffEdit"]');
+    if(staffEditBtn){
+      if(tabAccess('staff') !== 'full'){ showToast("Staff management isn't available to your role."); return; }
+      const email = staffEditBtn.getAttribute('data-email');
+      const row = staffRows.find(r => r.email === email);
+      if(row) openStaffForm(row.email, row.role, row.active !== false, row.full_name);
+      return;
+    }
+
+    const staffToggleBtn = e.target.closest('[data-action="staffToggle"]');
+    if(staffToggleBtn){
+      if(tabAccess('staff') !== 'full'){ showToast("Staff management isn't available to your role."); return; }
+      const email = staffToggleBtn.getAttribute('data-email');
+      const active = staffToggleBtn.getAttribute('data-active') === '1';
+      if(!email) return;
+      await toggleStaffActive(email, !active);
+      return;
+    }
+
+    if(e.target.id === 'copyEmailBtn'){
+      if(tabAccess('summary') !== 'full'){
+        showToast("Read-only view — copy isn't available to your role.");
+        return;
+      }
+      const text = document.getElementById('emailPreview').textContent;
+      try{
+        await navigator.clipboard.writeText(text);
+        showToast('Email text copied');
+      }catch(err){
+        showToast('Copy failed — select the text manually');
+      }
+      return;
+    }
+
+    if(e.target.id === 'printReportBtn'){
+      if(!canPrint()){
+        showToast("Printing isn't available to your role.");
+        return;
+      }
+      const s = computeSummary();
+      document.getElementById('printArea').innerHTML = buildPrintHtml(s.unticked, s.extras, s.noLuggage);
+      setTimeout(()=> window.print(), 50);
+      return;
+    }
+
+    const historyRow = e.target.closest('[data-action="viewHistory"]');
+    if(historyRow){
+      const dateStr = historyRow.getAttribute('data-date');
+      const row = historyRows.find(r => r.report_date === dateStr);
+      if(row) renderHistoryDetail(dateStr, row.payload || {}, row.list_uploaded_at);
+      return;
+    }
+
+    if(e.target.id === 'historyBackBtn'){
+      document.getElementById('historyDetail').classList.add('hidden');
+      document.getElementById('historyList').classList.remove('hidden');
+      return;
+    }
+
+    if(e.target.id === 'historyPrintBtn' && historyViewing){
+      if(!canPrint()){
+        showToast("Printing isn't available to your role.");
+        return;
+      }
+      const { dateStr, payload, uploadedAt } = historyViewing;
+      const rooms = payload.rooms || [];
+      const extras = payload.extras || [];
+      const { unticked, noLuggage } = computeSummaryFor(rooms, extras);
+      document.getElementById('printArea').innerHTML = buildPrintHtmlFor(dateStr, rooms.length, unticked, extras, noLuggage, payload.confirmations, uploadedAt);
+      setTimeout(()=> window.print(), 50);
+      return;
+    }
+
+    const signBtn = e.target.closest('[data-action="sign"]');
+    if(signBtn){
+      const role = signBtn.getAttribute('data-role');
+      if(!canConfirm(role)){
+        showToast("Sign-off isn't available to your role.");
+        return;
+      }
+      // Name is taken from the staff table; the user never types it.
+      if(!me){ showToast('Not signed in'); return; }
+      state.confirmations = state.confirmations || {};
+      state.confirmations[role] = {
+        name: me.full_name,
+        email: me.email,
+        time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+      };
+      await saveState();
+      renderSignOffs();
+      { const s = computeSummary(); document.getElementById('emailPreview').textContent = buildEmailText(s.unticked, s.extras, s.noLuggage); }
+      showToast('Confirmed');
+      return;
+    }
+
+    const unsignBtn = e.target.closest('[data-action="unsign"]');
+    if(unsignBtn){
+      const role = unsignBtn.getAttribute('data-role');
+      if(!canConfirm(role)){
+        showToast("Sign-off isn't available to your role.");
+        return;
+      }
+      if(state.confirmations) delete state.confirmations[role];
+      await saveState();
+      renderSignOffs();
+      { const s = computeSummary(); document.getElementById('emailPreview').textContent = buildEmailText(s.unticked, s.extras, s.noLuggage); }
+      return;
+    }
+  });
+
+  function updateParsePreview(){
+    const text = document.getElementById('pasteBox').value;
+    const box = document.getElementById('parsePreview');
+    if(!text.trim()){ box.innerHTML = ''; return; }
+    const { rooms, skipped } = parsePaste(text);
+    const withDate = rooms.filter(r=>r.arrival).length;
+    let msg = '<strong>' + rooms.length + '</strong> room' + (rooms.length===1?'':'s') + ' detected';
+    msg += ' (' + withDate + ' with an arrival date found)';
+    if(skipped) msg += ' · ' + skipped + ' line' + (skipped===1?'':'s') + ' ignored (headers/totals)';
+    if(rooms.length){
+      const sample = rooms.slice(0,3).map(r=> 'Room ' + r.room + (r.arrival ? ' (' + r.arrival + (r.departure ? ' → ' + r.departure : '') + ')' : ' (no date)')).join(', ');
+      msg += '<br>e.g. ' + sample + (rooms.length>3 ? ', …' : '');
+    }
+    box.innerHTML = msg;
+  }
+
+  function onRoomSearchInput(e){
+    checklistFilter = e.target.value.trim();
+    renderChecklist();
+  }
+
+  async function onPdfInputChange(e){
+    const file = e.target.files[0];
+    if(!file) return;
+    const statusEl = document.getElementById('pdfStatus');
+    statusEl.textContent = 'Reading PDF…';
+    try{
+      const text = await extractTextFromPdf(file);
+      document.getElementById('pasteBox').value = text;
+      updateParsePreview();
+      statusEl.textContent = 'Loaded ' + file.name + ' — review below, then save.';
+    }catch(err){
+      console.error(err);
+      statusEl.textContent = 'Could not read that PDF. Try pasting the text instead.';
+    }
+    e.target.value = '';
+  }
+
+  wireStaticListeners();
+
+  async function tryLogin(){
+    const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+    const password = document.getElementById('loginPassword').value;
+    const errEl = document.getElementById('loginError');
+    errEl.textContent = '';
+    if(!email || !password){ errEl.textContent = 'Enter email and password'; return; }
+    const client = sbClient();
+    if(!client){ errEl.textContent = 'Server not configured — ask the manager'; return; }
+    const btn = document.getElementById('loginBtn');
+    btn.disabled = true; btn.textContent = 'Signing in…';
+    try{
+      const { data, error } = await client.auth.signInWithPassword({ email, password });
+      if(error){ errEl.textContent = error.message; return; }
+      session = data.session;
+      await onSignedIn();
+    }catch(e){
+      console.error(e);
+      errEl.textContent = 'Could not sign in — check your connection';
+    }finally{
+      btn.disabled = false; btn.textContent = 'Sign in';
+    }
+  }
+
+  async function onSignedIn(){
+    try{
+      me = await sbGetMe();
+    }catch(e){
+      console.error(e);
+      me = null;
+    }
+    if(!me || me.active === false || !ROLE_LABELS[me.role]){
+      document.getElementById('loginError').textContent =
+        !me ? 'You are not on the staff list. Ask the manager to add you.'
+        : (me.active === false ? 'Your account is disabled — ask the manager.'
+           : 'Your role is not recognized yet — ask the manager to update it.');
+      try{ await sbClient().auth.signOut(); }catch(_){}
+      session = null;
+      return;
+    }
+    // Tag the body with the raw role (used for the role chip + debugging).
+    document.body.setAttribute('data-role', me.role);
+    document.getElementById('whoName').textContent = me.full_name;
+    const chip = document.getElementById('whoRole');
+    chip.textContent = ROLE_LABELS[me.role] || me.role.replace('_',' ');
+    chip.className = 'role-chip ' + (myDept() === 'hk' ? 'chip-hk' : 'chip-fo');
+    document.getElementById('whoBadge').style.display = 'flex';
+    document.getElementById('loginView').classList.add('hidden');
+    document.getElementById('mainView').classList.remove('hidden');
+    document.getElementById('mainView2').classList.remove('hidden');
+    document.getElementById('loadingView').classList.remove('hidden');
+    document.getElementById('dateLabel').textContent = formatDateLabel(new Date());
+    todayKey = localDateStr(new Date());
+    await loadState();
+    document.getElementById('loadingView').classList.add('hidden');
+    // Build the nav for this role (hidden tabs are never mounted), restore
+    // pristine tab markup, open the right default tab, and render everything.
+    renderNav();
+    applyRoleGatingBeforeRender();
+    switchTab(defaultTabFor());
+    renderAll();
+  }
+
+  async function signOut(){
+    const client = sbClient();
+    if(client) try{ await client.auth.signOut(); }catch(_){}
+    session = null; me = null;
+    document.body.removeAttribute('data-role');
+    document.getElementById('whoBadge').style.display = 'none';
+    document.getElementById('mainView').classList.add('hidden');
+    document.getElementById('mainView2').classList.add('hidden');
+    document.getElementById('loadingView').classList.add('hidden');
+    document.getElementById('loginView').classList.remove('hidden');
+    document.getElementById('loginPassword').value = '';
+    // Reset every section to pristine static markup + wipe the nav so the next
+    // sign-in (possibly with a different role) starts from a clean slate.
+    ['setup','checklist','extra','summary','history','staff'].forEach(t=>{
+      document.getElementById('tab-'+t).innerHTML = sectionOriginal[t];
+    });
+    document.getElementById('mainView2').innerHTML = '';
+    activeTab = '';
+    wireStaticListeners();
+  }
+
+  async function init(){
+    if(!sbConfigured()){
+      document.getElementById('loginError').textContent =
+        'Supabase not configured. Run `npm run build` after editing .env.';
+      document.getElementById('loginBtn').disabled = true;
+      document.getElementById('loginView').classList.remove('hidden');
+      return;
+    }
+    const client = sbClient();
+    // Try to resume an existing session before showing the login form.
+    const { data } = await client.auth.getSession();
+    if(data && data.session){
+      session = data.session;
+      await onSignedIn();
+    } else {
+      document.getElementById('loginView').classList.remove('hidden');
+    }
+    // Keep tabs across reloads / multiple open windows.
+    client.auth.onAuthStateChange((_evt, newSession)=>{
+      if(!newSession && me) signOut();
+    });
+  }
+
+  document.getElementById('loginBtn').addEventListener('click', tryLogin);
+  document.getElementById('loginPassword').addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter') tryLogin();
+  });
+  document.getElementById('logoutBtn').addEventListener('click', signOut);
+  init();
+})();
+</script>
+</body>
+</html>
