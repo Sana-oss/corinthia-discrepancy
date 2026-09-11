@@ -32,6 +32,23 @@ update public.staff set role = 'hk_manager'    where role = 'manager';
 alter table public.staff add constraint staff_role_check
   check (role in ('hk_staff','hk_supervisor','hk_manager','fo_staff','fo_supervisor','fo_manager'));
 
+-- Trim whitespace from role/full_name before writing (a BEFORE trigger runs
+-- before the CHECK constraint, so hand-typed values like 'hk_manager ' with a
+-- trailing space are sanitized instead of failing with 23514).
+create or replace function public.trim_staff_fields()
+returns trigger as $$
+begin
+  new.role := btrim(new.role);
+  new.full_name := btrim(new.full_name);
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists trg_trim_staff_fields on public.staff;
+create trigger trg_trim_staff_fields
+  before insert or update of role, full_name on public.staff
+  for each row execute function public.trim_staff_fields();
+
 alter table public.staff enable row level security;
 
 -- security definer helper: reads the current user's role WITHOUT triggering
