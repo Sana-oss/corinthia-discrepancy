@@ -4,86 +4,161 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Room Discrepancy Report</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<meta name="description" content="Daily room discrepancy checklist and handoff for Corinthia Hotel Tripoli.">
+<meta name="theme-color" content="#1f1d19">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Discrepancy">
+
+<link rel="preconnect" href="https://cdnjs.cloudflare.com">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="config.js"></script>
 <style>
+  /* ============================================================
+     Corinthia Hotels visual identity — UI-only restyle.
+     Palette + type system sourced from corinthia.com production CSS.
+     Business logic untouched: same DOM, same IDs/classes/handlers.
+     ============================================================ */
+
+  /* --- Brand fonts (local, provided OTFs) --- */
+  @font-face{
+    font-family:'IvyOra Display';
+    src:url('Font/IvyOraDisplay-Regular.otf') format('opentype');
+    font-weight:400; font-style:normal; font-display:swap;
+  }
+  @font-face{
+    font-family:'GT America LC Extended';
+    src:url('Font/GT-America-LC-Extended-Regular.otf') format('opentype');
+    font-weight:400; font-style:normal; font-display:swap;
+  }
+  @font-face{
+    font-family:'GT America LC Extended';
+    src:url('Font/GT-America-LC-Extended-Medium.otf') format('opentype');
+    font-weight:500; font-style:normal; font-display:swap;
+  }
+
   :root{
-    --bg:#F6F4EF;
-    --surface:#FFFFFF;
-    --ink:#1B2420;
-    --ink-soft:#5B655F;
-    --line:#DAD5C8;
-    --verified:#3F6659;
-    --verified-bg:#E7EEE9;
-    --pending:#B8873A;
-    --pending-bg:#F6ECDA;
-    --alert:#A63D33;
-    --alert-bg:#F5E4E1;
+    /* Corinthia palette (corinthia.com production CSS) */
+    --bg:#f1f0ee;            /* page background — ivory */
+    --bg-soft:#f6f5f4;       /* secondary ivory */
+    --surface:#fdfdfc;       /* cards, inputs */
+    --ink:#1f1d19;           /* primary text — charcoal */
+    --ink-soft:#60594e;      /* secondary text — muted brown */
+    --ink-on-dark:#fdfdfc;   /* text on charcoal */
+    --ink-display:#e9e1d6;   /* cream display text */
+    --line:#d8d5cf;          /* borders/dividers — warm greige */
+    --line-dark:#332f29;     /* dark surface borders */
+    --dark-2:#332f29;        /* dark surface */
+    --gold:#ffd285;          /* gold accent — hover/focus */
+    --gold-strong:#ffa300;   /* stronger gold */
+    --gold-hover-text:#1f1300; /* corinthia.com button text on gold hover */
+    --focus:#ffd285;         /* focus outline color */
+
+    /* Status (re-derived from the brand palette for harmony) */
+    --verified:#414940;      /* deep bronze-green */
+    --verified-bg:#e8dfde;
+    --pending:#a3762f;       /* deep bronze-gold */
+    --pending-bg:#fff2db;    /* cream wash */
+    --alert:#7a2e26;         /* deep antique red */
+    --alert-bg:#f5e4e1;
+
+    /* Typography */
+    --font-display:'IvyOra Display',Georgia,'Times New Roman',serif;
+    --font-body:'GT America LC Extended',Helvetica,Arial,sans-serif;
+    --font-mono:'GT America LC Extended',ui-monospace,monospace;
+
+    /* Shape */
+    --radius:3px;            /* corinthia.com control radius (luxury minimal) */
+    --focus-outline:6px solid var(--focus); /* corinthia.com focus spec */
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
-    font-family:'IBM Plex Sans',system-ui,sans-serif;
-    -webkit-font-smoothing:antialiased;}
-  .mono{font-family:'IBM Plex Mono',ui-monospace,monospace;}
+    font-family:var(--font-body); font-synthesis-weight:none;
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;}
+  .mono{font-family:var(--font-mono);}
   #app{max-width:520px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;
     background:var(--bg);position:relative;}
 
-  header{padding:18px 20px 14px;border-bottom:1px solid var(--line);
-    display:flex;align-items:baseline;justify-content:space-between;}
-  header .title{font-size:17px;font-weight:600;letter-spacing:-0.01em;}
-  header .date{font-size:13px;color:var(--ink-soft);font-family:'IBM Plex Mono',monospace;}
+  /* --- Header --- */
+  header{padding:18px 20px 16px;border-bottom:1px solid var(--line);
+    display:flex;align-items:center;justify-content:space-between;
+    background:var(--surface);}
+  .app-logo{height:34px;width:auto;display:block;flex-shrink:0;}
+  header .title{font-family:var(--font-display);font-size:19px;font-weight:400;
+    letter-spacing:0;color:var(--ink);white-space:nowrap;}
+  header .date{font-size:12px;color:var(--ink-soft);font-family:var(--font-mono);
+    letter-spacing:.5px;}
+  .offline-badge{padding:3px 9px;border-radius:0;font-size:10px;line-height:1.4;
+    font-family:var(--font-body);letter-spacing:.6px;text-transform:uppercase;
+    background:var(--pending-bg);color:var(--pending);
+    border:1px solid var(--pending);white-space:nowrap;}
 
-  main{flex:1;padding:16px 20px 92px;overflow-y:auto;}
+  main{flex:1;padding:20px 20px 96px;overflow-y:auto;}
   .hidden{display:none !important;}
 
-  .panel-label{font-size:13px;color:var(--ink-soft);margin:0 0 6px;line-height:1.5;}
-  .panel-title{font-size:15px;font-weight:600;margin:22px 0 8px;}
+  .panel-label{font-size:13px;color:var(--ink-soft);margin:0 0 8px;line-height:1.6;}
+  .panel-title{font-family:var(--font-display);font-size:17px;font-weight:400;
+    margin:26px 0 10px;color:var(--ink);}
   .panel-title:first-child{margin-top:0;}
 
-  textarea{width:100%;min-height:110px;padding:12px 14px;border:1px solid var(--line);
-    border-radius:4px;background:var(--surface);font-family:'IBM Plex Mono',monospace;
-    font-size:14px;color:var(--ink);resize:vertical;line-height:1.6;}
-  textarea:focus{outline:none;border-color:var(--verified);}
+  textarea{width:100%;min-height:110px;padding:13px 14px;border:1px solid var(--line);
+    border-radius:var(--radius);background:var(--surface);font-family:var(--font-mono);
+    font-size:13.5px;color:var(--ink);resize:vertical;line-height:1.6;}
+  textarea:focus{outline:none;border-color:var(--ink);}
 
   .row-input{display:flex;gap:8px;margin-top:10px;}
-  input[type=text]{flex:1;padding:11px 12px;border:1px solid var(--line);border-radius:4px;
-    background:var(--surface);font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--ink);}
-  input[type=text]:focus{outline:none;border-color:var(--verified);}
+  input[type=text]{flex:1;padding:12px 13px;border:1px solid var(--line);border-radius:var(--radius);
+    background:var(--surface);font-family:var(--font-mono);font-size:13.5px;color:var(--ink);}
+  input[type=text]:focus{outline:none;border-color:var(--ink);}
 
-  button{font-family:inherit;cursor:pointer;border:none;}
-  .btn-primary{width:100%;padding:13px;margin-top:12px;background:var(--ink);color:var(--bg);
-    border-radius:4px;font-size:14px;font-weight:600;letter-spacing:.01em;}
-  .btn-primary:active{opacity:.85;}
-  .btn-secondary{padding:11px 16px;background:transparent;color:var(--ink);border:1px solid var(--line);
-    border-radius:4px;font-size:14px;font-weight:500;white-space:nowrap;}
-  .btn-add{padding:0 18px;background:var(--ink);color:var(--bg);border-radius:4px;font-size:14px;font-weight:600;}
+  /* --- Buttons — corinthia.com .btn spec: uppercase GT America, gold hover --- */
+  button{font-family:var(--font-body);cursor:pointer;border:none;
+    transition:background .5s ease-in-out,border .5s ease-in-out,color .5s ease-in-out;}
+  .btn-primary{width:100%;padding:14px;margin-top:12px;background:var(--ink);color:var(--ink-on-dark);
+    border-radius:0;font-size:13px;font-weight:400;letter-spacing:.75px;text-transform:uppercase;}
+  .btn-primary:hover,.btn-primary:active{background:var(--gold);color:var(--gold-hover-text);}
+  .btn-primary:focus-visible{outline:var(--focus-outline);outline-offset:0;}
+  .btn-secondary{padding:12px 18px;background:transparent;color:var(--ink);border:1px solid var(--line);
+    border-radius:0;font-size:12px;font-weight:400;letter-spacing:.75px;text-transform:uppercase;white-space:nowrap;}
+  .btn-secondary:hover{border-color:var(--ink);}
+  .btn-secondary:focus-visible{outline:var(--focus-outline);outline-offset:0;}
+  .btn-add{padding:0 20px;background:var(--ink);color:var(--ink-on-dark);border-radius:0;
+    font-size:13px;font-weight:400;letter-spacing:.75px;text-transform:uppercase;}
+  .btn-add:hover{background:var(--gold);color:var(--gold-hover-text);}
 
-  .stat-row{display:flex;gap:10px;margin-bottom:18px;}
-  .stat{flex:1;background:var(--surface);border:1px solid var(--line);border-radius:4px;
-    padding:12px 12px 10px;}
-  .stat .num{font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:600;line-height:1;}
-  .stat .lbl{font-size:11.5px;color:var(--ink-soft);margin-top:4px;}
+  .stat-row{display:flex;gap:10px;margin-bottom:20px;}
+  .stat{flex:1;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:14px 14px 12px;}
+  .stat .num{font-family:var(--font-body);font-size:22px;font-weight:500;line-height:1;
+    letter-spacing:.3px;}
+  .stat .lbl{font-size:11px;color:var(--ink-soft);margin-top:5px;letter-spacing:.4px;
+    text-transform:uppercase;}
   .stat.alert .num{color:var(--alert);}
   .stat.verified .num{color:var(--verified);}
 
+
+  /* --- Ledger / rooms --- */
   ul.ledger{list-style:none;margin:0;padding:0;border-top:1px solid var(--line);}
   ul.ledger li{border-bottom:1px solid var(--line);}
 
   .room-row{display:flex;align-items:center;gap:12px;padding:13px 2px;}
   .room-tick{width:26px;height:26px;border-radius:50%;border:1.5px solid var(--line);
-    flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--surface);}
+    flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--surface);
+    transition:background .3s ease-in-out,border .3s ease-in-out;}
   .room-tick.on{background:var(--verified);border-color:var(--verified);}
   .room-tick.flagged{background:var(--pending);border-color:var(--pending);}
-  .room-tick svg{width:14px;height:14px;stroke:var(--bg);stroke-width:3;fill:none;
+  .room-tick svg{width:14px;height:14px;stroke:var(--surface);stroke-width:3;fill:none;
     stroke-linecap:round;stroke-linejoin:round;opacity:0;transition:opacity .1s;}
   .room-tick.on svg, .room-tick.flagged svg{opacity:1;}
   .room-main{flex:1;min-width:0;}
-  .room-num{font-family:'IBM Plex Mono',monospace;font-size:16px;font-weight:600;}
+  .room-num{font-family:var(--font-mono);font-size:15px;font-weight:500;letter-spacing:.3px;}
   .room-arrival{font-size:12px;color:var(--ink-soft);margin-top:1px;}
-  .luggage-btn{flex-shrink:0;width:34px;height:34px;border-radius:4px;border:1px solid var(--line);
+  .luggage-btn{flex-shrink:0;width:34px;height:34px;border-radius:var(--radius);border:1px solid var(--line);
     background:var(--surface);display:flex;align-items:center;justify-content:center;}
   .luggage-btn.flagged{background:var(--pending-bg);border-color:var(--pending);}
   .luggage-btn svg{width:17px;height:17px;stroke:var(--ink-soft);stroke-width:1.6;fill:none;}
@@ -91,90 +166,104 @@
 
   .extra-row{display:flex;align-items:center;gap:12px;padding:12px 2px;}
   .extra-row .room-num{flex:1;}
-  .trash-btn{width:32px;height:32px;border-radius:4px;background:transparent;
+  .trash-btn{width:32px;height:32px;border-radius:var(--radius);background:transparent;
     display:flex;align-items:center;justify-content:center;}
   .trash-btn svg{width:16px;height:16px;stroke:var(--alert);stroke-width:1.7;fill:none;}
 
-  .empty{padding:28px 4px;text-align:center;color:var(--ink-soft);font-size:13.5px;line-height:1.6;}
+  .empty{padding:28px 4px;text-align:center;color:var(--ink-soft);font-size:13px;line-height:1.7;}
 
-  .summary-block{margin-bottom:22px;}
+  /* --- Summary --- */
+  .summary-block{margin-bottom:24px;}
   .summary-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
   .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
   .dot.alert{background:var(--alert);}
   .dot.pending{background:var(--pending);}
   .dot.verified{background:var(--verified);}
-  .summary-head h3{font-size:14px;font-weight:600;margin:0;}
-  .summary-item{padding:9px 0 9px 16px;border-bottom:1px solid var(--line);font-size:14px;}
-  .summary-item .room-num{font-size:15px;}
+  .summary-head h3{font-family:var(--font-display);font-size:16px;font-weight:400;margin:0;}
+  .summary-item{padding:9px 0 9px 16px;border-bottom:1px solid var(--line);font-size:13.5px;}
+  .summary-item .room-num{font-size:14px;}
   .summary-item .note{font-size:12px;color:var(--ink-soft);margin-top:1px;}
   .summary-block ul{border-top:1px solid var(--line);}
 
   #emailPreview{width:100%;min-height:220px;padding:14px;border:1px solid var(--line);
-    border-radius:4px;background:var(--surface);font-family:'IBM Plex Mono',monospace;
-    font-size:12.5px;line-height:1.7;color:var(--ink);white-space:pre-wrap;}
+    border-radius:var(--radius);background:var(--surface);font-family:var(--font-mono);
+    font-size:12px;line-height:1.8;color:var(--ink);white-space:pre-wrap;}
 
+  /* --- Toast --- */
   .toast{position:fixed;bottom:78px;left:50%;transform:translateX(-50%) translateY(8px);
-    background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:5px;font-size:13.5px;
+    background:var(--ink);color:var(--ink-on-dark);padding:11px 20px;border-radius:0;
+    font-size:12.5px;letter-spacing:.4px;
     opacity:0;pointer-events:none;transition:opacity .18s, transform .18s;z-index:20;
     max-width:80%;text-align:center;}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 
+  /* --- Bottom nav — corinthia.com label spec --- */
   nav{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--line);
     display:flex;max-width:520px;margin:0 auto;padding-bottom:env(safe-area-inset-bottom);}
   nav button{flex:1;padding:11px 4px 9px;background:transparent;display:flex;flex-direction:column;
     align-items:center;gap:4px;color:var(--ink-soft);}
   nav button svg{width:20px;height:20px;stroke:var(--ink-soft);stroke-width:1.6;fill:none;}
-  nav button span{font-size:10.5px;font-weight:500;}
+  nav button span{font-size:9px;font-weight:500;letter-spacing:.6px;text-transform:uppercase;}
   nav button.active{color:var(--ink);}
   nav button.active svg{stroke:var(--ink);}
+  nav button:focus-visible{outline:var(--focus-outline);outline-offset:-6px;}
   nav .badge{position:relative;}
   nav .badge::after{content:attr(data-count);position:absolute;top:-3px;right:-9px;
-    background:var(--alert);color:#fff;font-size:9.5px;font-weight:700;min-width:14px;height:14px;
-    border-radius:7px;display:flex;align-items:center;justify-content:center;padding:0 3px;
-    font-family:'IBM Plex Mono',monospace;}
+    background:var(--alert);color:var(--ink-on-dark);font-size:9px;font-weight:500;min-width:14px;height:14px;
+    border-radius:50%;display:flex;align-items:center;justify-content:center;padding:0 3px;
+    font-family:var(--font-mono);}
 
-  .loading{padding:60px 20px;text-align:center;color:var(--ink-soft);font-size:13.5px;}
+  .loading{padding:60px 20px;text-align:center;color:var(--ink-soft);font-size:13px;
+    letter-spacing:.4px;}
 
-  .sign-block{border:1px solid var(--line);border-radius:4px;background:var(--surface);padding:12px 14px;}
+  /* --- Handoff / signatures --- */
+  .sign-block{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);padding:14px 16px;}
   .sign-row{display:flex;gap:8px;}
   .sign-row input{flex:1;}
   .sign-done{display:flex;align-items:center;justify-content:space-between;gap:10px;}
   .sign-done-text{min-width:0;}
-  .sign-label{font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;}
-  .sign-name{font-size:15px;font-weight:600;margin-top:2px;}
+  .sign-label{font-size:10.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.6px;}
+  .sign-name{font-family:var(--font-display);font-size:16px;font-weight:400;margin-top:2px;}
   .sign-time{font-size:12px;color:var(--ink-soft);margin-top:1px;}
   .sign-check{width:22px;height:22px;border-radius:50%;background:var(--verified);flex-shrink:0;
     display:flex;align-items:center;justify-content:center;}
-  .sign-check svg{width:12px;height:12px;stroke:var(--bg);stroke-width:3;fill:none;stroke-linecap:round;stroke-linejoin:round;}
-  .handoff-track{border:1px solid var(--line);border-radius:4px;background:var(--surface);margin-bottom:14px;overflow:hidden;}
-  .handoff-step{display:flex;gap:10px;padding:10px 14px;align-items:center;}
+  .sign-check svg{width:12px;height:12px;stroke:var(--surface);stroke-width:3;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+  .handoff-track{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);margin-bottom:14px;overflow:hidden;}
+  .handoff-step{display:flex;gap:10px;padding:11px 16px;align-items:center;}
   .handoff-step:not(:last-child){border-bottom:1px solid var(--line);}
-  .handoff-dot{width:22px;height:22px;border-radius:50%;background:var(--line);flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+  .handoff-dot{width:22px;height:22px;border-radius:50%;background:var(--line);flex-shrink:0;display:flex;align-items:center;justify-content:center;
+    transition:background .3s ease-in-out;}
   .handoff-step.done .handoff-dot{background:var(--verified);}
-  .handoff-dot svg{width:12px;height:12px;stroke:var(--bg);stroke-width:3;fill:none;stroke-linecap:round;stroke-linejoin:round;}
-  .handoff-num{font-size:11px;color:var(--ink-soft);font-weight:600;}
-  .handoff-step-label{font-size:13px;font-weight:500;}
-  .handoff-step.done .handoff-step-label{font-weight:600;}
+  .handoff-dot svg{width:12px;height:12px;stroke:var(--surface);stroke-width:3;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+  .handoff-num{font-size:10px;color:var(--ink-soft);letter-spacing:.6px;}
+  .handoff-step-label{font-size:13px;font-weight:400;}
+  .handoff-step.done .handoff-step-label{font-weight:500;}
   .handoff-step-time{font-size:12px;color:var(--ink-soft);margin-top:1px;}
   .link-btn{background:transparent;color:var(--ink-soft);font-size:12px;text-decoration:underline;padding:2px;}
+  .link-btn:focus-visible{outline:var(--focus-outline);outline-offset:0;}
 
+
+  /* --- Login / identity --- */
   #printArea{display:none;}
 
-  .login-card{max-width:380px;margin:60px auto;padding:24px;border:1px solid var(--line);
-    border-radius:6px;background:var(--surface);}
-  .login-title{font-size:18px;font-weight:600;margin-bottom:6px;}
+  .login-card{max-width:380px;margin:60px auto;padding:32px 28px;border:1px solid var(--line);
+    border-radius:var(--radius);background:var(--surface);}
+  .login-logo{text-align:center;margin:-6px 0 18px;}
+  .login-logo img{height:46px;width:auto;display:block;margin:0 auto;}
+  .login-title{font-family:var(--font-display);font-size:22px;font-weight:400;margin-bottom:8px;text-align:center;}
   .login-error{color:var(--alert);font-size:13px;margin-top:10px;min-height:18px;}
-  .who{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-soft);}
-  .who .role-chip{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;
-    padding:2px 7px;border-radius:10px;background:var(--verified-bg);color:var(--verified);}
+  .who{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-soft);}
+  .who .role-chip{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.6px;
+    padding:2px 8px;border-radius:0;background:var(--verified-bg);color:var(--verified);}
   .who .role-chip.chip-hk{background:var(--verified-bg);color:var(--verified);}
-  .who .role-chip.chip-fo{background:#E5EBF2;color:#3A5874;}
+  .who .role-chip.chip-fo{background:#e8e6e3;color:var(--dark-2);}
   .who button.link-btn{margin-left:auto;}
+
   /* Read-only (View) state — dimmed + interactions blocked. Applied from JS by
      role (is-readonly class), not by permanently hiding via CSS. */
   .readonly-banner{display:flex;align-items:center;gap:8px;background:var(--pending-bg);
-    color:var(--pending);border:1px solid var(--pending);border-radius:4px;
-    padding:9px 12px;font-size:12.5px;font-weight:600;margin:0 0 14px;}
+    color:var(--pending);border:1px solid var(--pending);border-radius:0;
+    padding:9px 12px;font-size:11px;letter-spacing:.4px;text-transform:uppercase;font-weight:500;margin:0 0 14px;}
   .is-readonly button,.is-readonly input,.is-readonly textarea{opacity:.55;}
   .is-readonly [data-action]{pointer-events:none;opacity:.55;}
   .is-readonly .room-tick svg,.is-readonly .luggage-btn svg,
@@ -184,51 +273,58 @@
   /* Staff management (managers) */
   .staff-row{display:flex;align-items:center;gap:12px;padding:13px 2px;}
   .staff-main{flex:1;min-width:0;}
-  .staff-name{font-size:15px;font-weight:600;}
-  .staff-email{font-size:12.5px;color:var(--ink-soft);margin-top:2px;}
+  .staff-name{font-family:var(--font-display);font-size:16px;font-weight:400;}
+  .staff-email{font-size:12px;color:var(--ink-soft);margin-top:2px;}
   .staff-chip{display:flex;align-items:center;gap:6px;margin-top:3px;}
-  .staff-chip .role-chip{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;
-    padding:2px 7px;border-radius:10px;}
+  .staff-chip .role-chip{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.6px;
+    padding:2px 8px;border-radius:0;}
   .staff-chip .role-chip.chip-hk{background:var(--verified-bg);color:var(--verified);}
-  .staff-chip .role-chip.chip-fo{background:#E5EBF2;color:#3A5874;}
+  .staff-chip .role-chip.chip-fo{background:#e8e6e3;color:var(--dark-2);}
   .staff-controls{display:flex;gap:8px;}
-  .btn-sm{font-size:12px;padding:3px 8px;}
-  .badge-soft{font-size:10px;font-weight:600;color:var(--ink-soft);border:1px solid var(--line);
-    padding:1px 6px;border-radius:9px;}
-  .you-tag{font-size:10.5px;font-weight:600;color:var(--verified);text-transform:uppercase;letter-spacing:.04em;}
+  .btn-sm{font-size:11px;padding:4px 10px;letter-spacing:.5px;}
+  .badge-soft{font-size:9.5px;font-weight:500;color:var(--ink-soft);border:1px solid var(--line);
+    padding:1px 7px;border-radius:0;letter-spacing:.5px;text-transform:uppercase;}
+  .you-tag{font-size:10px;font-weight:500;color:var(--pending);text-transform:uppercase;letter-spacing:.6px;}
   .act-off{color:var(--alert);}
-  select{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:4px;
-    background:var(--surface);font-size:14px;color:var(--ink);font-family:inherit;}
-  select:focus{outline:none;border-color:var(--verified);}
-  #staffFormWrap input[type=email],#staffFormWrap input[type=text]{width:100%;padding:11px 12px;
-    border:1px solid var(--line);border-radius:4px;background:var(--surface);font-family:'IBM Plex Mono',monospace;
-    font-size:14px;color:var(--ink);}
-  #staffFormWrap input:focus{border-color:var(--verified);outline:none;}
+  select{width:100%;padding:12px 12px;border:1px solid var(--line);border-radius:var(--radius);
+    background:var(--surface);font-size:13.5px;color:var(--ink);font-family:var(--font-body);}
+  select:focus{outline:none;border-color:var(--ink);}
+  #staffFormWrap input[type=email],#staffFormWrap input[type=text]{width:100%;padding:12px 13px;
+    border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);font-family:var(--font-mono);
+    font-size:13.5px;color:var(--ink);}
+  #staffFormWrap input:focus{border-color:var(--ink);outline:none;}
 
+  /* Front Desk setup — presentational card wrapper (new CSS-only treatment) */
+  .needs-fd{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:18px 16px;margin-bottom:26px;}
+
+
+  /* --- Print (monochrome for paper, brand fonts) --- */
   @media print{
     @page{ margin: 14mm; }
     body *{ visibility:hidden; }
     #printArea, #printArea *{ visibility:visible; }
     #printArea{
       display:block; position:absolute; top:0; left:0; width:100%;
-      font-family:'IBM Plex Sans', system-ui, sans-serif; color:#111;
+      font-family:'GT America LC Extended', Helvetica, Arial, sans-serif; color:#111;
     }
-    .print-header{display:flex;justify-content:space-between;align-items:baseline;
+    .print-header{display:flex;justify-content:space-between;align-items:center;
       border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:4px;}
-    .print-header h1{font-size:19px;margin:0;}
-    .print-header .print-date{font-family:'IBM Plex Mono',monospace;font-size:13px;}
+    .print-header .print-brand{display:flex;align-items:center;gap:14px;min-width:0;}
+    .print-header .print-logo{height:38px;width:auto;display:block;}
+    .print-header h1{font-family:'IvyOra Display', Georgia, serif;font-size:20px;font-weight:400;margin:0;}
+    .print-header .print-date{font-size:12px;letter-spacing:.5px;}
     .print-meta{display:flex;gap:24px;margin:10px 0 18px;font-size:12.5px;}
-    .print-meta b{font-family:'IBM Plex Mono',monospace;font-size:14px;}
+    .print-meta b{font-size:14px;}
     .print-section{margin-bottom:16px; page-break-inside:avoid;}
-    .print-section h2{font-size:13px;margin:0 0 6px;text-transform:uppercase;letter-spacing:.03em;}
+    .print-section h2{font-size:12px;margin:0 0 6px;text-transform:uppercase;letter-spacing:.8px;font-weight:500;}
     table.print-table{width:100%;border-collapse:collapse;font-size:12.5px;}
     table.print-table th, table.print-table td{border-bottom:1px solid #ccc;padding:5px 6px;text-align:left;}
-    table.print-table th{font-weight:600;border-bottom:1.5px solid #111;}
+    table.print-table th{font-weight:500;border-bottom:1.5px solid #111;}
     .print-none{font-size:12.5px;color:#555;padding:4px 0;}
     .print-signatures{display:flex;gap:40px;margin-top:34px;}
     .print-sig{flex:1;}
-    .print-sig .sig-line{border-top:1px solid #111;margin-bottom:6px;padding-top:6px;
-      font-family:'IBM Plex Mono',monospace;font-size:12px;}
+    .print-sig .sig-line{border-top:1px solid #111;margin-bottom:6px;padding-top:6px;font-size:12px;}
     .print-sig .sig-role{font-size:11px;color:#555;margin-top:2px;}
   }
 </style>
@@ -236,8 +332,14 @@
 <body>
 <div id="app">
   <header>
-    <div class="title">Room Discrepancy Report</div>
-    <div class="date mono" id="dateLabel">—</div>
+    <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+      <img class="app-logo" src="new-logo.svg" alt="Corinthia" width="68" height="34">
+      <div class="title">Room Discrepancy Report</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div class="date mono" id="dateLabel">—</div>
+      <span class="offline-badge hidden" id="offlineBadge">offline</span>
+    </div>
   </header>
 
   <div class="who" id="whoBadge" style="padding:8px 20px;display:none;">
@@ -248,6 +350,7 @@
 
   <main id="loginView">
     <div class="login-card">
+      <div class="login-logo"><img src="new-logo.svg" alt="Corinthia Hotels" width="92" height="46"></div>
       <div class="login-title">Sign in</div>
       <p class="panel-label">Use the email and password given to you by the manager.</p>
       <input type="email" id="loginEmail" placeholder="you@corinthia-tripoli.com" autocomplete="username">
@@ -575,6 +678,119 @@
     return Object.assign(sbAuthHeaders(), extra || {});
   }
 
+  // ============================================================
+  // --- Offline support: IndexedDB cache + write outbox --------
+  // ============================================================
+  // 'cache' store: the last successfully fetched/saved row per date, so the
+  // app can open and render while offline. 'outbox' store: writes that failed
+  // because the device had no connection; they are replayed (oldest first)
+  // whenever connectivity returns. Auth headers are NEVER stored — they are
+  // rebuilt from the live session at flush time (sbSaveDay does this), so a
+  // queued write can't carry a stale or expired token.
+  const OFFLINE_DB = 'discrepancy-offline';
+  const OFFLINE_DB_VER = 1;
+  let flushingOutbox = false;
+
+  function idbOpen(){
+    return new Promise((resolve,reject)=>{
+      const req = indexedDB.open(OFFLINE_DB, OFFLINE_DB_VER);
+      req.onupgradeneeded = ()=>{
+        const db = req.result;
+        if(!db.objectStoreNames.contains('cache')) db.createObjectStore('cache');
+        if(!db.objectStoreNames.contains('outbox')) db.createObjectStore('outbox');
+      };
+      req.onsuccess = ()=> resolve(req.result);
+      req.onerror = ()=> reject(req.error);
+    });
+  }
+  function idbOp(store, mode, action){
+    return idbOpen().then(db => new Promise((resolve,reject)=>{
+      const tx = db.transaction(store, mode);
+      const req = action(tx.objectStore(store));
+      tx.oncomplete = ()=> resolve(req ? req.result : undefined);
+      tx.onerror = ()=> reject(tx.error);
+    }));
+  }
+  const cacheGetRow = (k)=> idbOp('cache','readonly', s=>s.get(k)).catch(()=>null);
+  const cachePutRow = (k,v)=> idbOp('cache','readwrite', s=>s.put(v,k)).catch(()=>{});
+  const outboxAll   = ()=> idbOp('outbox','readonly', s=>s.getAll()).catch(()=>[]);
+  const outboxKeys  = ()=> idbOp('outbox','readonly', s=>s.getAllKeys()).catch(()=>[]);
+  const outboxPut   = (k,v)=> idbOp('outbox','readwrite', s=>s.put(v,k));
+  const outboxDelete= (k)=> idbOp('outbox','readwrite', s=>s.delete(k)).catch(()=>{});
+
+  // Network-level failures from fetch() surface as TypeError ("Failed to
+  // fetch"); server-side problems (403 etc.) come through as plain Errors and
+  // must NOT be queued — they would fail again on replay.
+  function isOfflineError(e){
+    return !navigator.onLine || e instanceof TypeError ||
+      /failed to fetch|networkerror|network error/i.test((e && e.message) || '');
+  }
+
+  // Replays the outbox, oldest first, rebuilding request headers from the
+  // current session. A write that fails with a network error is left queued
+  // and retried on the next flush; a permanent failure (e.g. 403) is dropped
+  // with a toast so it doesn't retry forever.
+  async function flushOutbox(){
+    if(flushingOutbox || !sbConfigured() || !session) return;
+    flushingOutbox = true;
+    try{
+      const keys = await outboxKeys();
+      const entries = await outboxAll();
+      const items = keys.map((k,i)=>({ key:k, entry:entries[i] }))
+        .filter(it=>it.entry)
+        .sort((a,b)=> String(a.entry.queuedAt).localeCompare(String(b.entry.queuedAt)));
+      for(const it of items){
+        try{
+          await sbSaveDay(it.key, it.entry.payload, it.entry.stampUpload);
+          await outboxDelete(it.key);
+          // Mirror the synced row so an offline reload still shows it.
+          cachePutRow(it.key, { payload: it.entry.payload, updated_at: new Date().toISOString(), list_uploaded_at: listUploadedAt });
+        }catch(err){
+          if(isOfflineError(err)) throw err; // still offline — retry later
+          await outboxDelete(it.key);
+          console.error('Offline change could not sync:', err);
+          showToast('A saved-offline change could not sync: ' + err.message);
+        }
+      }
+      if(items.length) showToast('Back online — offline changes synced');
+    }catch(e){
+      console.error('Outbox flush interrupted:', e);
+    }finally{
+      flushingOutbox = false;
+      await refreshOfflineBadge();
+      scheduleLiveReload();
+    }
+  }
+
+  // Header badge: "offline" when there's no connection, "N pending sync" when
+  // writes are queued while the connection is back but not yet flushed.
+  async function refreshOfflineBadge(){
+    const entries = await outboxAll();
+    const count = entries.length;
+    const badge = document.getElementById('offlineBadge');
+    if(!badge) return;
+    if(!navigator.onLine){
+      badge.textContent = 'offline';
+      badge.classList.remove('hidden');
+    }else if(count){
+      badge.textContent = count + ' pending sync';
+      badge.classList.remove('hidden');
+    }else{
+      badge.classList.add('hidden');
+    }
+  }
+
+  // Ask the service worker for a background-sync wake-up (Android/Chrome) so
+  // a queued flush can start without the user returning to the tab. iOS
+  // Safari doesn't support it — the online/focus flush covers that path.
+  function pwaRequestSync(){
+    if(navigator.serviceWorker && navigator.serviceWorker.ready){
+      navigator.serviceWorker.ready.then(reg=>{
+        if(reg.sync) reg.sync.register('sync-discrepancy').catch(()=>{});
+      }).catch(()=>{});
+    }
+  }
+
   // Fetch one day's saved report by date string ('2026-09-03'). Returns the
   // full row (payload, updated_at, list_uploaded_at), or null if not found.
   // Uses fetch() directly against PostgREST — the SDK is kept only for Auth.
@@ -584,7 +800,12 @@
     const res = await fetch(url, { headers: sbHeaders() });
     if(!res.ok) throw new Error('Supabase read failed (' + res.status + ')');
     const rows = await res.json();
-    return rows.length ? rows[0] : null;
+    if(rows.length){
+      // Mirror to the offline cache so the app can render this day offline.
+      cachePutRow(dateStr, rows[0]);
+      return rows[0];
+    }
+    return null;
   }
 
   // Upsert (insert or overwrite) one day's report. Pass stampUpload=true only
@@ -750,8 +971,16 @@
       applyLoadedRow(await sbGetDay(todayKey));
     }catch(e){
       console.error(e);
-      applyLoadedRow(null);
-      showToast('Could not reach the server — check your connection');
+      // Offline fallback: show the last row we successfully saw for this date
+      // instead of a blank checklist.
+      const cached = await cacheGetRow(todayKey);
+      if(cached && cached.payload){
+        applyLoadedRow(cached);
+        showToast('Offline — showing last saved data');
+      }else{
+        applyLoadedRow(null);
+        showToast('Could not reach the server — check your connection');
+      }
     }
   }
 
@@ -765,6 +994,12 @@
     reloadTimer = setTimeout(async ()=>{
       reloadTimer = null;
       if(savingNow || !me || !session || !sbConfigured()) return;
+      // While offline edits are still queued for today, don't pull the server
+      // row over our local state — the outbox flush re-syncs once online.
+      try{
+        const queued = await outboxKeys();
+        if(queued && queued.includes(todayKey)) return;
+      }catch(_){ /* IDB unavailable — fall through to the normal reload */ }
       try{
         const row = await sbGetDay(todayKey);
         if(!row || !row.payload || row.updated_at === loadedUpdatedAt) return;
@@ -804,6 +1039,8 @@
       setTimeout(()=> location.reload(), 1200);
       return;
     }
+    // Flush anything queued while the device was offline, then catch up.
+    flushOutbox();
     scheduleLiveReload();
   }
 
@@ -814,6 +1051,8 @@
     savingNow = true;
     try{
       await sbSaveDay(todayKey, state, stampUpload);
+      // Mirror what we just saved so an offline reload still shows it.
+      cachePutRow(todayKey, { payload: state, updated_at: new Date().toISOString(), list_uploaded_at: listUploadedAt });
       if(stampUpload){
         // Re-fetch so the UI shows the true server-stamped time, not a guess.
         const row = await sbGetDay(todayKey);
@@ -823,9 +1062,20 @@
       }
     }catch(e){
       console.error(e);
-      showToast('Save failed — check connection');
+      if(isOfflineError(e)){
+        // Offline: queue the write (latest payload per date wins) and keep the
+        // optimistic local state. It replays automatically on reconnect.
+        try{
+          await outboxPut(todayKey, { payload: state, stampUpload: !!stampUpload, queuedAt: new Date().toISOString() });
+          pwaRequestSync();
+        }catch(idbErr){ console.error('Could not queue offline write:', idbErr); }
+        showToast('Offline — saved on this device, will sync automatically');
+      }else{
+        showToast('Save failed — check connection');
+      }
     }finally{
       savingNow = false;
+      refreshOfflineBadge();
     }
     // Sync our freshness marker (and re-render if someone else saved meanwhile).
     scheduleLiveReload();
@@ -1506,7 +1756,7 @@
     const discCount = unticked.length + extras.length;
 
     let html = '';
-    html += '<div class="print-header"><h1>Room Discrepancy Report</h1><div class="print-date">'+escapeHtml(dateStr)+'</div></div>';
+    html += '<div class="print-header"><div class="print-brand"><img class="print-logo" src="new-logo.svg" alt="Corinthia"><h1>Room Discrepancy Report</h1></div><div class="print-date">'+escapeHtml(dateStr)+'</div></div>';
     html += '<div class="print-meta">'
           + '<div>Rooms on list: <b>'+total+'</b></div>'
           + '<div>Discrepancies: <b>'+discCount+'</b></div>'
@@ -2115,6 +2365,10 @@
     todayKey = localDateStr(new Date());
     await loadState();
     document.getElementById('loadingView').classList.add('hidden');
+    // Offline plumbing: refresh the badge and replay anything queued while the
+    // app was closed or the device was offline.
+    await refreshOfflineBadge();
+    flushOutbox();
     // Build the nav for this role (hidden tabs are never mounted), restore
     // pristine tab markup, open the right default tab, and render everything.
     renderNav();
@@ -2188,6 +2442,22 @@
   document.addEventListener('visibilitychange', ()=>{
     if(document.visibilityState === 'visible') onAppFocus();
   });
+  // --- PWA: service worker registration + offline sync listeners ---
+  window.addEventListener('online', ()=>{ refreshOfflineBadge(); flushOutbox(); });
+  window.addEventListener('offline', refreshOfflineBadge);
+  // The service worker caches the app shell; background-sync wake-ups arrive
+  // here as messages. Registration is a no-op on file:// (and on browsers
+  // without service worker support).
+  if('serviceWorker' in navigator && location.protocol !== 'file:'){
+    navigator.serviceWorker.register('sw.js')
+      .catch(err=>console.warn('Service worker registration failed:', err));
+    navigator.serviceWorker.ready.then(reg=>{
+      if(reg.sync) reg.sync.register('sync-discrepancy').catch(()=>{});
+    }).catch(()=>{});
+    navigator.serviceWorker.addEventListener('message', (ev)=>{
+      if(ev.data && ev.data.type === 'FLUSH_OUTBOX') flushOutbox();
+    });
+  }
   init();
 })();
 </script>

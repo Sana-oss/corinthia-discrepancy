@@ -1,0 +1,125 @@
+%!Adobe-FontList 1.25
+%Locale:0x409
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:Type1
+FontName:AdobeArabic-Regular
+FamilyName:Adobe Arabic
+StyleName:Regular
+MenuName:Adobe Arabic
+StyleBits:0
+WeightClass:400
+WidthClass:5
+AngleClass:0
+FullName:Adobe Arabic Regular
+FamilyNameNative:
+StyleNameNative:Regular
+FullNameNative:
+WritingScript:Arabic
+OutlineFileName:/Users/andrws/Desktop/C-TLI_Posters-F&B-A4P- Folder/Document fonts/AdobeArabic-Regular.otf
+DataFormat:sfntData
+UsesStandardEncoding:yes
+isCFF:yes
+hasSVG:no
+hasSBIX:no
+hasCOLR:no
+VariableFontType:NonVariableFont
+FileLength:299680
+FileModTime:471894441
+NameArray:0,Mac,18,Adobe Arabic
+NameArray:0,Mac,4,Adobe Arabic Regular
+NameArray:0,Win,1,Adobe Arabic
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:Invalid
+OutlineFileName:/Users/andrws/Desktop/C-TLI_Posters-F&B-A4P- Folder/Document fonts/AdobeFnt25.lst
+FileLength:2736
+FileModTime:791819641
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:Type1
+FontName:GTAmericaLC-ExtendedMedium
+FamilyName:GT America LC
+StyleName:Extended Medium
+MenuName:GT America LC Extended Medium
+StyleBits:0
+WeightClass:500
+WidthClass:7
+AngleClass:0
+FullName:GT America LC Extended Medium
+WritingScript:Roman
+OutlineFileName:/Users/andrws/Desktop/C-TLI_Posters-F&B-A4P- Folder/Document fonts/GT-America-LC-Extended-Medium.otf
+DataFormat:sfntData
+UsesStandardEncoding:yes
+isCFF:yes
+hasSVG:no
+hasSBIX:no
+hasCOLR:no
+VariableFontType:NonVariableFont
+FileLength:136544
+FileModTime:696854950
+NameArray:0,Mac,4,GT America LC Extended Medium
+NameArray:0,Win,1,GT America LC Extended Medium
+NameArray:0,Win,16,GT America LC
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:Type1
+FontName:GTAmericaLC-ExtendedRegular
+FamilyName:GT America LC
+StyleName:Extended Regular
+MenuName:GT America LC Extended Regular
+StyleBits:0
+WeightClass:400
+WidthClass:7
+AngleClass:0
+FullName:GT America LC Extended Regular
+WritingScript:Roman
+OutlineFileName:/Users/andrws/Desktop/C-TLI_Posters-F&B-A4P- Folder/Document fonts/GT-America-LC-Extended-Regular.otf
+DataFormat:sfntData
+UsesStandardEncoding:yes
+isCFF:yes
+hasSVG:no
+hasSBIX:no
+hasCOLR:no
+VariableFontType:NonVariableFont
+FileLength:133112
+FileModTime:696854948
+NameArray:0,Mac,4,GT America LC Extended Regular
+NameArray:0,Win,1,GT America LC Extended Regular
+NameArray:0,Win,16,GT America LC
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:Type1
+FontName:IvyOraDisplay-Regular
+FamilyName:IvyOra Display
+StyleName:Regular
+MenuName:IvyOra Display
+StyleBits:0
+WeightClass:400
+WidthClass:5
+AngleClass:0
+FullName:IvyOra Display
+WritingScript:Roman
+OutlineFileName:/Users/andrws/Desktop/C-TLI_Posters-F&B-A4P- Folder/Document fonts/IvyOraDisplay-Regular.otf
+DataFormat:sfntData
+UsesStandardEncoding:yes
+isCFF:yes
+hasSVG:no
+hasSBIX:no
+hasCOLR:no
+VariableFontType:NonVariableFont
+FileLength:157936
+FileModTime:728832460
+NameArray:0,Win,1,IvyOra Display
+NameArray:0,Win,16,IvyOra Display
+%EndFont
+
