@@ -395,9 +395,18 @@
 
 <script>
 (function(){
-  let state = { rooms: [], extras: [], confirmations: {} };
+  let state = { rooms: [], extras: [], confirmations: {}, handoff: { status: 'in_progress' } };
   let activeTab = 'setup';
   let todayKey = '';
+  // --- Live-sync bookkeeping ---
+  // loadedUpdatedAt: the server row's updated_at at our last load/save, so we
+  // can tell whether someone else changed the report since we last looked.
+  // realtimeChannel: Supabase Realtime subscription for today's row.
+  // savingNow: true while a save is in flight (live reloads back off).
+  let loadedUpdatedAt = null;
+  let realtimeChannel = null;
+  let reloadTimer = null;
+  let savingNow = false;
   let historyRows = [];
   let historyViewing = null;
   let checklistFilter = '';
@@ -696,61 +705,125 @@
     });
   }
 
+  // Apply a fetched daily_reports row to in-memory state (used by loadState and
+// by live reloads, so both paths normalize + derive the handoff identically).
+  function applyLoadedRow(row){
+    if(row && row.payload){
+      state = row.payload;
+      state.rooms = normalizeRooms(state.rooms);
+      state.extras = state.extras || [];
+      state.confirmations = state.confirmations || {};
+      // Backward compat: derive handoff state from legacy confirmations
+      // (pre-handoff days stored both signatures flat). If a handoff record
+      // already exists, keep it; otherwise reconstruct status from signatures.
+      if(!state.handoff){
+        const hk = state.confirmations.housekeeping, fo = state.confirmations.frontdesk;
+        if(hk && fo){
+          state.handoff = { status:'signed', hk_sign:{name:hk.name,email:hk.email,time:hk.time} };
+        } else if(hk){
+          state.handoff = { status:'submitted', hk_sign:{name:hk.name,email:hk.email,time:hk.time} };
+        } else {
+          state.handoff = { status:'in_progress' };
+        }
+      }
+      loadedUpdatedAt = row.updated_at || null;
+      listUploadedAt = row.list_uploaded_at || null;
+    } else {
+      state = { rooms: [], extras: [], confirmations: {}, handoff: { status: 'in_progress' } };
+      loadedUpdatedAt = null;
+      listUploadedAt = null;
+    }
+  }
+
   async function loadState(){
     if(!sbConfigured()){
-      state = { rooms: [], extras: [], confirmations: {} };
+      applyLoadedRow(null);
       showToast('Supabase not configured yet — see the setup comment in the code');
       return;
     }
     try{
-      const row = await sbGetDay(todayKey);
-      if(row && row.payload){
-        state = row.payload;
-        state.rooms = normalizeRooms(state.rooms);
-        state.extras = state.extras || [];
-        state.confirmations = state.confirmations || {};
-        // Backward compat: derive handoff state from legacy confirmations
-        // (pre-handoff days stored both signatures flat). If a handoff record
-        // already exists, keep it; otherwise reconstruct status from signatures.
-        if(!state.handoff){
-          const hk = state.confirmations.housekeeping, fo = state.confirmations.frontdesk;
-          if(hk && fo){
-            state.handoff = { status:'signed', hk_sign:{name:hk.name,email:hk.email,time:hk.time} };
-          } else if(hk){
-            state.handoff = { status:'submitted', hk_sign:{name:hk.name,email:hk.email,time:hk.time} };
-          } else {
-            state.handoff = { status:'in_progress' };
-          }
-        }
-        listUploadedAt = row.list_uploaded_at || null;
-      } else {
-        state = { rooms: [], extras: [], confirmations: {} };
-        listUploadedAt = null;
-      }
+      applyLoadedRow(await sbGetDay(todayKey));
     }catch(e){
       console.error(e);
-      state = { rooms: [], extras: [], confirmations: {} };
-      listUploadedAt = null;
+      applyLoadedRow(null);
       showToast('Could not reach the server — check your connection');
     }
+  }
+
+  // --- Live sync: keep every open device on the same picture. ---
+  // Debounced re-fetch of today's row. Fired by (a) the Realtime channel when
+  // ANY device changes the report and (b) window focus, so a device that slept
+  // overnight catches up the moment it's touched. No-ops when nothing changed
+  // or a save of ours is still in flight.
+  function scheduleLiveReload(){
+    if(reloadTimer) return;
+    reloadTimer = setTimeout(async ()=>{
+      reloadTimer = null;
+      if(savingNow || !me || !session || !sbConfigured()) return;
+      try{
+        const row = await sbGetDay(todayKey);
+        if(!row || !row.payload || row.updated_at === loadedUpdatedAt) return;
+        applyLoadedRow(row);
+        renderAll();
+      }catch(e){ /* live refresh is best-effort */ }
+    }, 700);
+  }
+
+  // Supabase Realtime subscription: the server pushes an event whenever today's
+  // row changes (any device's save), so every screen stays live without manual
+  // refreshing. Requires migration 006 (table in the supabase_realtime
+  // publication); without it, window-focus refresh (onAppFocus) still covers.
+  function wireRealtime(){
+    const client = sbClient();
+    if(!client) return;
+    if(realtimeChannel){
+      try{ client.removeChannel(realtimeChannel); }catch(_){ }
+      realtimeChannel = null;
+    }
+    realtimeChannel = client.channel('live-' + todayKey)
+      .on('postgres_changes',
+          { event: '*', schema: 'public', table: 'daily_reports', filter: 'report_date=eq.' + todayKey },
+          scheduleLiveReload)
+      .subscribe();
+  }
+
+  // Runs whenever the app window regains focus / the tab becomes visible.
+  function onAppFocus(){
+    if(!me || !session) return;
+    // Day rollover: if the device's date changed while the app was open, reload
+    // so "today" points at the new day (state autosaves, nothing is lost —
+    // yesterday's report is already archived under its own date).
+    const nowKey = localDateStr(new Date());
+    if(todayKey && nowKey !== todayKey){
+      showToast('New day started — reloading…');
+      setTimeout(()=> location.reload(), 1200);
+      return;
+    }
+    scheduleLiveReload();
   }
 
   // Pass stampUpload=true ONLY from the "Save & start today's checklist" handler.
   // Every other save (tick, luggage, extra room, confirmation, unsign) must call
   // saveState() with no argument so the tamper-proof trigger is not re-fired.
   async function saveState(stampUpload){
+    savingNow = true;
     try{
       await sbSaveDay(todayKey, state, stampUpload);
       if(stampUpload){
         // Re-fetch so the UI shows the true server-stamped time, not a guess.
         const row = await sbGetDay(todayKey);
         listUploadedAt = (row && row.list_uploaded_at) ? row.list_uploaded_at : listUploadedAt;
+        if(row) loadedUpdatedAt = row.updated_at || loadedUpdatedAt;
         renderSetup();
       }
     }catch(e){
       console.error(e);
       showToast('Save failed — check connection');
+    }finally{
+      savingNow = false;
     }
+    // Sync our freshness marker (and re-render if someone else saved meanwhile).
+    scheduleLiveReload();
   }
 
   const MONTHS = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
@@ -2043,9 +2116,18 @@
     applyRoleGatingBeforeRender();
     switchTab(defaultTabFor());
     renderAll();
+    // Live sync: subscribe to changes for today's report so every open device
+    // stays on the same picture (plus focus refresh as a fallback).
+    wireRealtime();
   }
 
   async function signOut(){
+    // Drop the live-sync subscription for this session's day.
+    const rtClient = sbClient();
+    if(rtClient && realtimeChannel){
+      try{ rtClient.removeChannel(realtimeChannel); }catch(_){ }
+      realtimeChannel = null;
+    }
     const client = sbClient();
     if(client) try{ await client.auth.signOut(); }catch(_){}
     session = null; me = null;
@@ -2094,6 +2176,13 @@
     if(e.key === 'Enter') tryLogin();
   });
   document.getElementById('logoutBtn').addEventListener('click', signOut);
+  // Live-sync fallback: catch up whenever the window regains focus or the tab
+  // becomes visible (also handles the day-rollover reload). Realtime covers
+  // continuous changes; this covers devices that slept/offlined.
+  window.addEventListener('focus', onAppFocus);
+  document.addEventListener('visibilitychange', ()=>{
+    if(document.visibilityState === 'visible') onAppFocus();
+  });
   init();
 })();
 </script>

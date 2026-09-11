@@ -49,6 +49,18 @@ create trigger trg_trim_staff_fields
   before insert or update of role, full_name on public.staff
   for each row execute function public.trim_staff_fields();
 
+-- Live updates: include daily_reports in the supabase_realtime publication so
+-- the app's Realtime subscription receives change events (see migration 006).
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'daily_reports'
+  ) then
+    alter publication supabase_realtime add table public.daily_reports;
+  end if;
+end $$;
+
 alter table public.staff enable row level security;
 
 -- security definer helper: reads the current user's role WITHOUT triggering
