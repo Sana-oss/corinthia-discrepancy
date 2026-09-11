@@ -141,6 +141,7 @@ drop policy if exists "anon read"                  on public.daily_reports;
 drop policy if exists "anon insert"                on public.daily_reports;
 drop policy if exists "anon update"                on public.daily_reports;
 drop policy if exists "fo upsert daily list"       on public.daily_reports;
+drop policy if exists "auth insert daily"          on public.daily_reports;
 drop policy if exists "authenticated update daily" on public.daily_reports;
 
 -- Logged-in users can read any day's report (Summary/History) — no anonymous access.
@@ -149,12 +150,16 @@ create policy "auth read daily"
   to authenticated
   using (true);
 
--- Front Desk line staff and FO manager create/replace the day's list (Setup).
--- Strictly departmental: HK roles (including hk_manager) have NO Setup access.
-create policy "fo upsert daily list"
+-- Any authenticated staff member may CREATE the day's row (first write of the
+-- day): an HK user adding an extra room or submitting before FD uploads the
+-- list must not hit a 403. Replacing the list remains FD-only in the app UI
+-- (Setup tab), consistent with the Option A trust model — the update policy
+-- below is equally permissive, so this grants no additional exposure.
+create policy "auth insert daily"
   on public.daily_reports for insert
   to authenticated
-  with check ( public.my_staff_role() in ('fo_staff','fo_supervisor','fo_manager') );
+  with check ( public.my_staff_role() in
+    ('hk_staff','hk_supervisor','hk_manager','fo_staff','fo_supervisor','fo_manager') );
 
 -- Option A from roles-implementation-plan.md: a single permissive update policy.
 -- RLS cannot restrict writes to individual jsonb keys inside `payload`, so

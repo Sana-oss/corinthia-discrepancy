@@ -602,7 +602,12 @@
       headers: sbHeaders({ 'Prefer': 'resolution=merge-duplicates' }),
       body: JSON.stringify([row])
     });
-    if(!res.ok) throw new Error('Supabase write failed (' + res.status + ')');
+    if(!res.ok){
+      if(res.status === 403){
+        throw new Error('Not allowed to save — your role doesn\'t have permission for this action (run migration 007, or ask the manager to check your staff role)');
+      }
+      throw new Error('Supabase write failed (' + res.status + ')');
+    }
   }
 
   // List all archived days (excluding today), most recent first.
