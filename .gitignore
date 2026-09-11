@@ -5,5 +5,7 @@ config.js
 # stray/junk
 npx
 diff.txt
-discrepancy-report (1).html
-discrepancy-report-orig.htmlsupabase/.temp/
+"discrepancy-report (1).html"
+discrepancy-report-orig.html
+supabase/.temp/
+proceed-while-running-*
