@@ -146,6 +146,16 @@
   .sign-check{width:22px;height:22px;border-radius:50%;background:var(--verified);flex-shrink:0;
     display:flex;align-items:center;justify-content:center;}
   .sign-check svg{width:12px;height:12px;stroke:var(--bg);stroke-width:3;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+  .handoff-track{border:1px solid var(--line);border-radius:4px;background:var(--surface);margin-bottom:14px;overflow:hidden;}
+  .handoff-step{display:flex;gap:10px;padding:10px 14px;align-items:center;}
+  .handoff-step:not(:last-child){border-bottom:1px solid var(--line);}
+  .handoff-dot{width:22px;height:22px;border-radius:50%;background:var(--line);flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+  .handoff-step.done .handoff-dot{background:var(--verified);}
+  .handoff-dot svg{width:12px;height:12px;stroke:var(--bg);stroke-width:3;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+  .handoff-num{font-size:11px;color:var(--ink-soft);font-weight:600;}
+  .handoff-step-label{font-size:13px;font-weight:500;}
+  .handoff-step.done .handoff-step-label{font-weight:600;}
+  .handoff-step-time{font-size:12px;color:var(--ink-soft);margin-top:1px;}
   .link-btn{background:transparent;color:var(--ink-soft);font-size:12px;text-decoration:underline;padding:2px;}
 
   #printArea{display:none;}
@@ -320,9 +330,10 @@
       <button class="btn-primary" id="copyEmailBtn">Copy email text</button>
 
       <div class="panel-title" id="confirmationTitle">Confirmation</div>
-      <p class="panel-label">Each department confirms once they've reviewed this report — this replaces the paper signature.</p>
+      <p class="panel-label">Housekeeping submits the report to Front Desk; Front Desk receives and confirms.</p>
+      <div id="handoffTracker"></div>
       <div id="signHK"></div>
-      <div id="signFO" style="margin-top:10px;"></div>
+      <div id="signFO"></div>
 
       <button class="btn-secondary" id="printReportBtn" style="width:100%;margin-top:16px;">Print report</button>
     </section>
@@ -342,12 +353,13 @@
 
     <!-- STAFF TAB (managers only) -->
     <section id="tab-staff" class="hidden">
-      <p class="panel-label">Manage your department's staff and their roles — you only see people from your own department. Role changes take effect on their next sign-in.</p>
+      <p class="panel-label">Manage your department's staff — you only see people from your own department. Adding someone here also creates their login: set an initial password and share it with them. Use Edit to change roles or set a new password.</p>
       <button class="btn-secondary" id="staffAddBtn">＋ Add staff</button>
       <div id="staffFormWrap" class="hidden">
         <div class="panel-title" id="staffFormTitle">Add staff</div>
         <input type="text" id="staffNameInput" placeholder="Full name" autocomplete="off">
         <input type="email" id="staffEmailInput" placeholder="email@corinthia-tripoli.com" autocomplete="off" style="margin-top:8px;">
+        <input type="text" id="staffPassInput" placeholder="Initial password (min 6 chars) — share with the employee" autocomplete="off" style="margin-top:8px;">
         <select id="staffRoleSelect" style="width:100%;margin-top:8px;">
           <option value="">Select role…</option>
           <optgroup label="Housekeeping">
@@ -439,6 +451,9 @@
     if(side === 'frontdesk')    return r === 'fo_supervisor' || r === 'fo_manager';
     return false;
   }
+  // HK operational tabs (checklist/extra) are frozen once the report leaves
+  // in_progress (submitted → received → signed), until Housekeeping recalls it.
+  function hkFrozen(){ return myDept() === 'hk' && handoffStatus() !== 'in_progress'; }
   function canPrint(){ return isSupOrMgr(); }
 
   const RO_MSG = {
@@ -625,6 +640,34 @@
     if(error) throw error;
   }
 
+  // Ask the create-staff Edge Function to create a login (with an initial
+  // password) or reset an existing employee's password. The function holds the
+  // service-role key server-side and re-checks manager + department itself.
+  // Throws Error with err.notDeployed = true when the function isn't deployed
+  // (or unreachable) so the caller can fall back to saving the staff row only.
+  async function sbStaffLogin(payload){
+    if(!sbConfigured()) throw Object.assign(new Error('Supabase not configured'), { notDeployed: true });
+    let res;
+    try{
+      res = await fetch(SUPABASE_URL + '/functions/v1/create-staff', {
+        method: 'POST',
+        headers: sbHeaders(),
+        body: JSON.stringify(payload)
+      });
+    }catch(e){
+      throw Object.assign(new Error('Could not reach the login service'), { notDeployed: true });
+    }
+    if(res.status === 404){
+      throw Object.assign(new Error('Login service not deployed yet'), { notDeployed: true });
+    }
+    let data = null;
+    try{ data = await res.json(); }catch(_){ /* non-JSON (proxy error page) */ }
+    if(!res.ok){
+      throw new Error((data && data.error) || ('Login service error (' + res.status + ')'));
+    }
+    return data;
+  }
+
   // Look up the current user in the staff table to get their role + display name.
   // RLS on staff lets a user read their own row; managers can read everyone.
   async function sbGetMe(){
@@ -666,6 +709,19 @@
         state.rooms = normalizeRooms(state.rooms);
         state.extras = state.extras || [];
         state.confirmations = state.confirmations || {};
+        // Backward compat: derive handoff state from legacy confirmations
+        // (pre-handoff days stored both signatures flat). If a handoff record
+        // already exists, keep it; otherwise reconstruct status from signatures.
+        if(!state.handoff){
+          const hk = state.confirmations.housekeeping, fo = state.confirmations.frontdesk;
+          if(hk && fo){
+            state.handoff = { status:'signed', hk_sign:{name:hk.name,email:hk.email,time:hk.time} };
+          } else if(hk){
+            state.handoff = { status:'submitted', hk_sign:{name:hk.name,email:hk.email,time:hk.time} };
+          } else {
+            state.handoff = { status:'in_progress' };
+          }
+        }
         listUploadedAt = row.list_uploaded_at || null;
       } else {
         state = { rooms: [], extras: [], confirmations: {} };
@@ -921,6 +977,13 @@
     document.getElementById('staffEmailInput').disabled = !!email; // email = PK
     document.getElementById('staffRoleSelect').value = role || '';
     document.getElementById('staffActiveCheck').checked = (active !== false);
+    const pass = document.getElementById('staffPassInput');
+    pass.value = '';
+    // Add mode: password is required (creates their login). Edit mode: optional
+    // (only changes the password when filled).
+    pass.placeholder = email
+      ? 'Set new password — leave blank to keep current'
+      : 'Initial password (min 6 chars) — share with the employee';
     document.getElementById('staffFormWrap').classList.remove('hidden');
     document.getElementById('staffAddBtn').style.display = 'none';
     document.getElementById('staffHint').style.display = 'none';
@@ -928,6 +991,7 @@
   function closeStaffForm(){
     staffEditEmail = null;
     document.getElementById('staffFormWrap').classList.add('hidden');
+    document.getElementById('staffPassInput').value = '';
     document.getElementById('staffAddBtn').style.display = '';
     document.getElementById('staffHint').style.display = 'none';
   }
@@ -937,33 +1001,93 @@
     const email = document.getElementById('staffEmailInput').value.trim().toLowerCase();
     const role = document.getElementById('staffRoleSelect').value;
     const active = document.getElementById('staffActiveCheck').checked;
+    const password = document.getElementById('staffPassInput').value;
     if(!name){ showToast('Enter a full name'); return; }
     if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ showToast('Enter a valid email'); return; }
     if(!role){ showToast('Pick a role'); return; }
     if(ROLE_DEPT[role] !== myDept()){ showToast('Pick a role in your department'); return; }
+    // Add mode: a password is required — it creates the login they sign in with.
+    // Edit mode: the password is optional — only sets a new one when filled.
+    const isNew = !staffEditEmail;
+    if(isNew || password){
+      if(password.length < 6){ showToast('Password must be at least 6 characters'); return; }
+    }
 
-    const err = lastManagerError(email, role, active);
-    if(err){ showToast(err); return; }
+    const mgrErr = lastManagerError(email, role, active);
+    if(mgrErr){ showToast(mgrErr); return; }
 
-    let isNew = false;
+    const hint = document.getElementById('staffHint');
+
+    if(isNew){
+      // Preferred path: the create-staff Edge Function creates the login + the
+      // staff row together, so the employee can sign in immediately.
+      try{
+        await sbStaffLogin({ action: 'create', email, full_name: name, role, active, password });
+        closeStaffForm();
+        await loadStaffList();
+        hint.textContent = 'Employee added with a login. Give them their email and the password you set — they can sign in right away.';
+        hint.style.display = '';
+        showToast('Staff added — login created');
+        return;
+      }catch(e){
+        if(!e.notDeployed){
+          if(/ALREADY_EXISTS/.test(e.message || '')){
+            // Login already exists — just save the staff row.
+            try{
+              await sbUpsertStaff({ email, full_name: name, role, active });
+            }catch(_){
+              showToast('Could not save — check you have manager access');
+              return;
+            }
+            closeStaffForm();
+            await loadStaffList();
+            hint.textContent = 'Staff saved. A login already exists for this email — they sign in with their existing password (use Edit to set a new one).';
+            hint.style.display = '';
+            showToast('Staff saved — login already existed');
+            return;
+          }
+          // Real error (weak password, cross-department, etc.) — keep the form open.
+          showToast(e.message);
+          return;
+        }
+        // notDeployed → legacy fallback below: save the staff row only.
+        try{
+          await sbUpsertStaff({ email, full_name: name, role, active });
+        }catch(_){
+          showToast('Could not save — check you have manager access');
+          return;
+        }
+        closeStaffForm();
+        await loadStaffList();
+        hint.textContent = 'Staff row saved, but no login was created (login service not deployed). Ask whoever manages the Supabase project to create a login in Authentication → Users with this email — or deploy the create-staff function (see supabase/functions/README.md).';
+        hint.style.display = '';
+        showToast('Staff saved — login needs Supabase dashboard');
+        return;
+      }
+    }
+
+    // Edit mode: update the profile row, then optionally set a new password.
     try{
-      isNew = !staffRows.some(r => r.email === email);
       await sbUpsertStaff({ email, full_name: name, role, active });
     }catch(e){
       console.error(e);
       showToast('Could not save — check you have manager access');
       return;
     }
-
+    if(password){
+      try{
+        await sbStaffLogin({ action: 'reset', email, password });
+        showToast('Staff saved — password updated');
+      }catch(e){
+        showToast(e.notDeployed
+          ? 'Profile saved — password not changed (login service not deployed)'
+          : 'Profile saved, but the password could not be changed: ' + e.message);
+      }
+    } else {
+      showToast('Staff saved');
+    }
     closeStaffForm();
     await loadStaffList();
-    // Can't verify auth.users from the client; show the login hint.
-    if(isNew){
-      const hint = document.getElementById('staffHint');
-      hint.textContent = 'Saved. They can\'t sign in yet — a login account must exist in Supabase → Authentication → Users with the same email first.';
-      hint.style.display = '';
-    }
-    showToast('Staff saved');
   }
 
   async function toggleStaffActive(email, active){
@@ -1009,6 +1133,18 @@
     document.getElementById('statConfirmed').textContent = confirmedOnly + '/' + state.rooms.length;
     document.getElementById('statLuggage').textContent = state.rooms.filter(r=>r.status === 'noluggage').length;
 
+    // Frozen banner: once HK submits, the checklist is read-only until recalled.
+    const cb = document.getElementById('checklistFrozenBanner');
+    if(hkFrozen()){
+      if(!cb){
+        const banner = document.createElement('div');
+        banner.id = 'checklistFrozenBanner';
+        banner.className = 'readonly-banner';
+        banner.textContent = 'Report submitted to Front Desk — checklist is locked. Recall to edit.';
+        document.getElementById('tab-checklist').insertBefore(banner, document.getElementById('tab-checklist').firstChild);
+      }
+    } else if(cb){ cb.remove(); }
+
     if(state.rooms.length === 0){
       wrap.innerHTML = '<div class="empty">No rooms loaded yet. Ask Front Desk to save the list for today in Setup.</div>';
       return;
@@ -1041,6 +1177,19 @@
   function renderExtra(){
     const wrap = document.getElementById('extraList');
     wrap.innerHTML = '';
+
+    // Frozen banner: once HK submits, extra rooms can't be added/removed until recalled.
+    const fb = document.getElementById('extraFrozenBanner');
+    if(hkFrozen()){
+      if(!fb){
+        const banner = document.createElement('div');
+        banner.id = 'extraFrozenBanner';
+        banner.className = 'readonly-banner';
+        banner.textContent = 'Report submitted to Front Desk — extra rooms are locked. Recall to edit.';
+        document.getElementById('tab-extra').insertBefore(banner, document.getElementById('tab-extra').firstChild);
+      }
+    } else if(fb){ fb.remove(); }
+
     if(state.extras.length === 0){
       wrap.innerHTML = '<div class="empty">No extra rooms reported.</div>';
     } else {
@@ -1095,43 +1244,111 @@
     renderSignOffs();
   }
 
-  function renderSignBlock(elId, role, label){
+  function handoffStatus(){ return (state.handoff || {}).status || 'in_progress'; }
+
+  function renderHandoffTracker(){
+    const el = document.getElementById('handoffTracker');
+    if(!el) return;
+    const st = handoffStatus();
+    const h = state.handoff || {};
+    const fo = (state.confirmations || {}).frontdesk || {};
+    const steps = [
+      { label:'Submitted by Housekeeping', done: st!=='in_progress', name:(h.hk_sign||{}).name, time:(h.hk_sign||{}).time },
+      { label:'Received by Front Desk',    done: st==='received'||st==='signed', name:(h.fd_received||{}).name, time:(h.fd_received||{}).time },
+      { label:'Confirmed by Front Desk',   done: st==='signed', name:fo.name, time:fo.time }
+    ];
+    el.innerHTML = '<div class="handoff-track">' + steps.map((s,i)=>`<div class="handoff-step ${s.done?'done':''}">
+      <div class="handoff-dot">${s.done ? checkSvg() : '<span class="handoff-num">'+(i+1)+'</span>'}</div>
+      <div class="handoff-body"><div class="handoff-step-label">${s.label}</div>
+      <div class="handoff-step-time mono">${s.done ? (escapeHtml(s.name||'')+(s.time?' &middot; '+escapeHtml(s.time):'')) : 'Pending'}</div></div>
+    </div>`).join('') + '</div>';
+  }
+
+  function renderSignBlock(elId, side, label){
     const el = document.getElementById(elId);
-    // Sign-off is supervisor/manager only (roles-implementation-plan.md).
-    // Hidden sides are NOT mounted at all — nothing to re-enable in dev tools.
-    if(!canConfirm(role)){
-      el.innerHTML = '';
-      return;
+    // Sign-off is supervisor/manager only. Hidden sides are NOT mounted at all.
+    if(!canConfirm(side)){ el.innerHTML=''; return; }
+    const st = handoffStatus();
+    const h = state.handoff || {};
+    const fo = (state.confirmations || {}).frontdesk || {};
+    const myEmail = me ? me.email : '';
+    let html = '';
+    if(side==='housekeeping'){
+      if(st==='in_progress'){
+        html = '<div class="sign-block" data-side="housekeeping">'
+          + '<div class="sign-label" style="margin-bottom:8px;">'+label+'</div>'
+          + '<button class="btn-primary" data-action="handoffSubmit">Submit report to Front Desk</button>'
+          + '<div class="panel-label" style="margin-top:6px;">Submitting locks the checklist and records your confirmation.</div>'
+          + '</div>';
+      } else {
+        const sign = h.hk_sign || {};
+        const isMe = sign.email===myEmail;
+        html = '<div class="sign-block" data-side="housekeeping"><div class="sign-done">'
+          + '<div class="sign-done-text">'
+          + '<div class="sign-label">Submitted by '+label+'</div>'
+          + '<div class="sign-name">'+escapeHtml(sign.name||'')+'</div>'
+          + '<div class="sign-time mono">Confirmed '+escapeHtml(sign.time||'')+'</div>'
+          + '</div><div class="sign-check">'+checkSvg()+'</div>'
+          + '</div>'
+          + ((st!=='signed' && isMe) ? '<button class="link-btn" data-action="handoffRecall">Recall</button>' : '')
+          + '</div>';
+      }
+    } else { // frontdesk
+      if(st==='in_progress'){
+        html = '<div class="sign-block" data-side="frontdesk">'
+          + '<div class="sign-label">'+label+'</div>'
+          + '<div class="panel-label" style="margin-top:6px;">Waiting for Housekeeping to submit the report.</div>'
+          + '</div>';
+      } else if(st==='submitted'){
+        const sign = h.hk_sign || {};
+        html = '<div class="sign-block" data-side="frontdesk">'
+          + '<div class="sign-label" style="margin-bottom:8px;">'+label+'</div>'
+          + '<div class="panel-label">Housekeeping submitted at '+escapeHtml(sign.time||'')+'. '+escapeHtml(sign.name||'')+' confirmed the checklist.</div>'
+          + '<button class="btn-primary" style="margin-top:8px;" data-action="handoffReceive">Receive report</button>'
+          + '</div>';
+      } else if(st==='received'){
+        const recv = h.fd_received || {};
+        const isRecvMe = recv.email===myEmail;
+        html = '<div class="sign-block" data-side="frontdesk"><div class="sign-done">'
+          + '<div class="sign-done-text">'
+          + '<div class="sign-label">Received by Front Desk</div>'
+          + '<div class="sign-name">'+escapeHtml(recv.name||'')+'</div>'
+          + '<div class="sign-time mono">Received '+escapeHtml(recv.time||'')+'</div>'
+          + '</div><div class="sign-check">'+checkSvg()+'</div>'
+          + '</div>'
+          + (isRecvMe ? '<button class="link-btn" data-action="handoffUnreceive">Undo receive</button>' : '')
+          + '</div>';
+        html += '<div class="sign-block" style="margin-top:10px;" data-side="frontdesk">'
+          + '<div class="sign-label" style="margin-bottom:8px;">Confirm receipt</div>'
+          + '<button class="btn-secondary" data-action="sign" data-role="frontdesk">Confirm as '+escapeHtml(me.full_name)+'</button>'
+          + '</div>';
+      } else { // signed
+        const recv = h.fd_received || {};
+        html = '<div class="sign-block" data-side="frontdesk"><div class="sign-done">'
+          + '<div class="sign-done-text">'
+          + '<div class="sign-label">Received by Front Desk</div>'
+          + '<div class="sign-name">'+escapeHtml(recv.name||'')+'</div>'
+          + '<div class="sign-time mono">Received '+escapeHtml(recv.time||'')+'</div>'
+          + '</div><div class="sign-check">'+checkSvg()+'</div>'
+          + '</div></div>';
+        html += '<div class="sign-block" style="margin-top:10px;" data-side="frontdesk"><div class="sign-done">'
+          + '<div class="sign-done-text">'
+          + '<div class="sign-label">Confirmed by '+label+'</div>'
+          + '<div class="sign-name">'+escapeHtml(fo.name||'')+'</div>'
+          + '<div class="sign-time mono">Confirmed '+escapeHtml(fo.time||'')+'</div>'
+          + '</div><div class="sign-check">'+checkSvg()+'</div>'
+          + '</div>'
+          + '<button class="link-btn" data-action="unsign" data-role="frontdesk">Undo</button>'
+          + '</div>';
+      }
     }
-    const rec = (state.confirmations || {})[role];
-    const canSign = true; // gated by canConfirm(role) above
-    if(rec && rec.name){
-      el.innerHTML = `<div class="sign-block" data-role="${role}"><div class="sign-done">
-        <div class="sign-done-text">
-          <div class="sign-label">${label}</div>
-          <div class="sign-name">${rec.name}</div>
-          <div class="sign-time mono">Confirmed ${rec.time}</div>
-        </div>
-        <div class="sign-check">${checkSvg()}</div>
-      </div>
-      ${canSign ? `<button class="link-btn" data-action="unsign" data-role="${role}">Undo</button>` : ''}
-      </div>`;
-    } else if(canSign){
-      el.innerHTML = `<div class="sign-block" data-role="${role}">
-        <div class="sign-label" style="margin-bottom:8px;">${label}</div>
-        <button class="btn-secondary" data-action="sign" data-role="${role}">Confirm as ${escapeHtml(me.full_name)}</button>
-      </div>`;
-    } else {
-      el.innerHTML = `<div class="sign-block" data-role="${role}">
-        <div class="sign-label">${label}</div>
-        <div class="panel-label" style="margin-top:6px;">Waiting for ${role === 'housekeeping' ? 'Housekeeping' : 'Front Desk'} to confirm.</div>
-      </div>`;
-    }
+    el.innerHTML = html;
   }
 
   function renderSignOffs(){
-    renderSignBlock('signHK', 'housekeeping', 'Housekeeping');
-    renderSignBlock('signFO', 'frontdesk', 'Front Desk');
+    renderHandoffTracker();
+    renderSignBlock('signHK','housekeeping','Housekeeping');
+    renderSignBlock('signFO','frontdesk','Front Desk');
   }
 
   function buildEmailText(unticked, extras, noLuggage){
@@ -1164,16 +1381,23 @@
     }
     lines.push('Original physical copy to follow.');
     lines.push('');
+    const h = state.handoff || {};
     const hk = (state.confirmations || {}).housekeeping;
     const fo = (state.confirmations || {}).frontdesk;
-    if(hk && hk.name){
-      lines.push('Confirmed by Housekeeping: ' + hk.name + ' (' + hk.time + ')');
+    // Handoff workflow: HK submits (confirmed) → FD receives → FD confirms.
+    if(h.status === 'signed'){
+      lines.push('Confirmed by Housekeeping: ' + (hk ? hk.name + ' (' + hk.time + ')' : '—'));
+      lines.push('Confirmed received by Front Desk: ' + (fo ? fo.name + ' (' + fo.time + ')' : '—'));
+    } else if(h.status === 'received'){
+      lines.push('Confirmed by Housekeeping: ' + (hk ? hk.name + ' (' + hk.time + ')' : '—'));
+      lines.push('Received by Front Desk: ' + ((h.fd_received||{}).name ? (h.fd_received||{}).name + ' (' + (h.fd_received||{}).time + ')' : '—') + ' — awaiting confirmation');
+    } else if(h.status === 'submitted'){
+      lines.push('Confirmed by Housekeeping: ' + (hk ? hk.name + ' (' + hk.time + ')' : '—'));
+      lines.push('Submitted to Front Desk — awaiting receipt.');
+    } else {
+      lines.push('Status: in progress (Housekeeping working).');
     }
-    if(fo && fo.name){
-      lines.push('Confirmed received by Front Desk: ' + fo.name + ' (' + fo.time + ')');
-    }
-    if(hk && hk.name) lines.push('');
-    lines.push('Thanks,');
+    lines.push('');
     lines.push('Housekeeping');
     return lines.join('\n');
   }
@@ -1199,6 +1423,8 @@
   function buildPrintHtmlFor(dateStr, total, unticked, extras, noLuggage, confirmations, uploadedAt){
     const hk = (confirmations || {}).housekeeping || {};
     const fo = (confirmations || {}).frontdesk || {};
+    // Derive handoff status from signatures (works for today + history prints).
+    const derivedStatus = (hk.name && fo.name) ? 'signed' : hk.name ? 'submitted' : 'in_progress';
     const discCount = unticked.length + extras.length;
 
     let html = '';
@@ -1208,6 +1434,9 @@
           + '<div>Discrepancies: <b>'+discCount+'</b></div>'
           + '<div>No luggage: <b>'+noLuggage.length+'</b></div>'
           + (uploadedAt ? '<div>List uploaded: <b>'+escapeHtml(formatUploadTime(uploadedAt))+'</b></div>' : '')
+          + (derivedStatus === 'signed' ? '<div>Status: <b>Confirmed by both departments</b></div>'
+            : derivedStatus === 'submitted' ? '<div>Status: <b>Submitted to Front Desk</b></div>'
+            : '<div>Status: <b>In progress</b></div>')
           + '</div>';
 
     html += '<div class="print-section"><h2>Listed but not confirmed occupied</h2>' +
@@ -1223,8 +1452,8 @@
       '</div>';
 
     html += '<div class="print-signatures">'
-          + '<div class="print-sig"><div class="sig-line">'+(hk.name ? escapeHtml(hk.name)+' — '+escapeHtml(hk.time) : '&nbsp;')+'</div><div class="sig-role">Housekeeping</div></div>'
-          + '<div class="print-sig"><div class="sig-line">'+(fo.name ? escapeHtml(fo.name)+' — '+escapeHtml(fo.time) : '&nbsp;')+'</div><div class="sig-role">Front Desk</div></div>'
+          + '<div class="print-sig"><div class="sig-line">'+(hk.name ? escapeHtml(hk.name)+' — '+escapeHtml(hk.time) : '&nbsp;')+'</div><div class="sig-role">Submitted by Housekeeping</div></div>'
+          + '<div class="print-sig"><div class="sig-line">'+(fo.name ? escapeHtml(fo.name)+' — '+escapeHtml(fo.time) : '&nbsp;')+'</div><div class="sig-role">Confirmed by Front Desk</div></div>'
           + '</div>';
 
     return html;
@@ -1436,6 +1665,7 @@
         showToast("Read-only view — you can't add extra rooms.");
         return;
       }
+      if(hkFrozen()){ showToast("Report submitted — extra rooms locked. Recall to edit."); return; }
       const input = document.getElementById('extraRoomInput');
       const room = input.value.trim();
       if(!room){ showToast('Enter a room number'); return; }
@@ -1454,6 +1684,7 @@
         showToast("Read-only view — you can't tick rooms.");
         return;
       }
+      if(hkFrozen()){ showToast("Report submitted — checklist is locked. Recall to edit."); return; }
       const idx = parseInt(tickTarget.getAttribute('data-idx'));
       const r = state.rooms[idx];
       // Confirming or un-confirming always clears any "no luggage" flag too —
@@ -1471,6 +1702,7 @@
         showToast("Read-only view — you can't flag no-luggage.");
         return;
       }
+      if(hkFrozen()){ showToast("Report submitted — checklist is locked. Recall to edit."); return; }
       const idx = parseInt(luggageTarget.getAttribute('data-idx'));
       const r = state.rooms[idx];
       // Flagging "no luggage" replaces a plain confirm — finding no luggage
@@ -1488,6 +1720,7 @@
         showToast("Read-only view — you can't remove extra rooms.");
         return;
       }
+      if(hkFrozen()){ showToast("Report submitted — extra rooms locked. Recall to edit."); return; }
       const idx = parseInt(removeExtraTarget.getAttribute('data-idx'));
       state.extras.splice(idx,1);
       await saveState();
@@ -1528,6 +1761,73 @@
       const active = staffToggleBtn.getAttribute('data-active') === '1';
       if(!email) return;
       await toggleStaffActive(email, !active);
+      return;
+    }
+
+    // ---- Handoff workflow: HK submit → FD receive → FD confirm ----
+    const handoffSubmitBtn = e.target.closest('[data-action="handoffSubmit"]');
+    if(handoffSubmitBtn){
+      if(!me){ showToast('Not signed in'); return; }
+      if(!canConfirm('housekeeping')){ showToast("Only Housekeeping supervisors/managers can submit."); return; }
+      if(handoffStatus() !== 'in_progress'){ showToast('Report already submitted.'); return; }
+      const now = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+      state.handoff = state.handoff || {};
+      state.handoff.status = 'submitted';
+      state.handoff.hk_sign = { name:me.full_name, email:me.email, time:now };
+      state.confirmations = state.confirmations || {};
+      state.confirmations.housekeeping = { name:me.full_name, email:me.email, time:now };
+      await saveState();
+      renderAll();
+      showToast('Report submitted to Front Desk');
+      return;
+    }
+
+    const handoffRecallBtn = e.target.closest('[data-action="handoffRecall"]');
+    if(handoffRecallBtn){
+      if(!me){ showToast('Not signed in'); return; }
+      if(!canConfirm('housekeeping')){ showToast("Only Housekeeping can recall the report."); return; }
+      const h = state.handoff || {};
+      if((h.hk_sign||{}).email !== me.email){ showToast('Only the person who submitted can recall.'); return; }
+      if(handoffStatus() === 'signed'){ showToast("Cannot recall — Front Desk has confirmed."); return; }
+      state.handoff = { status:'in_progress' };
+      if(state.confirmations) delete state.confirmations.housekeeping;
+      await saveState();
+      renderAll();
+      showToast('Report recalled — checklist unlocked');
+      return;
+    }
+
+    const handoffReceiveBtn = e.target.closest('[data-action="handoffReceive"]');
+    if(handoffReceiveBtn){
+      if(!me){ showToast('Not signed in'); return; }
+      if(!canConfirm('frontdesk')){ showToast("Only Front Desk supervisors/managers can receive."); return; }
+      if(handoffStatus() !== 'submitted'){ showToast('Nothing to receive yet.'); return; }
+      const now = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+      state.handoff = state.handoff || {};
+      state.handoff.status = 'received';
+      state.handoff.fd_received = { name:me.full_name, email:me.email, time:now };
+      await saveState();
+      renderSummary();
+      renderChecklist();
+      renderExtra();
+      showToast('Report received');
+      return;
+    }
+
+    const handoffUnreceiveBtn = e.target.closest('[data-action="handoffUnreceive"]');
+    if(handoffUnreceiveBtn){
+      if(!me){ showToast('Not signed in'); return; }
+      if(!canConfirm('frontdesk')){ showToast("Only Front Desk can undo the receive."); return; }
+      const h = state.handoff || {};
+      if((h.fd_received||{}).email !== me.email){ showToast('Only the person who received can undo.'); return; }
+      if(handoffStatus() !== 'received'){ showToast('Nothing to undo.'); return; }
+      state.handoff.status = 'submitted';
+      delete state.handoff.fd_received;
+      await saveState();
+      renderSummary();
+      renderChecklist();
+      renderExtra();
+      showToast('Receive undone — re-submit when ready');
       return;
     }
 
@@ -1592,6 +1892,16 @@
         showToast("Sign-off isn't available to your role.");
         return;
       }
+      // Housekeeping no longer signs here — they submit via the handoff button.
+      if(role === 'housekeeping'){
+        showToast('Housekeeping submits the report via "Submit report to Front Desk".');
+        return;
+      }
+      // Front Desk can only confirm after receiving the report.
+      if(handoffStatus() !== 'received'){
+        showToast('Front Desk must receive the report before confirming.');
+        return;
+      }
       // Name is taken from the staff table; the user never types it.
       if(!me){ showToast('Not signed in'); return; }
       state.confirmations = state.confirmations || {};
@@ -1600,6 +1910,8 @@
         email: me.email,
         time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
       };
+      state.handoff = state.handoff || {};
+      state.handoff.status = 'signed';
       await saveState();
       renderSignOffs();
       { const s = computeSummary(); document.getElementById('emailPreview').textContent = buildEmailText(s.unticked, s.extras, s.noLuggage); }
@@ -1614,7 +1926,16 @@
         showToast("Sign-off isn't available to your role.");
         return;
       }
+      if(role === 'housekeeping'){
+        showToast('Housekeeping recalls the report instead of undoing.');
+        return;
+      }
       if(state.confirmations) delete state.confirmations[role];
+      // Revert the handoff status back one step: signed → received/submitted.
+      state.handoff = state.handoff || {};
+      if(state.handoff.status === 'signed'){
+        state.handoff.status = state.handoff.fd_received ? 'received' : 'submitted';
+      }
       await saveState();
       renderSignOffs();
       { const s = computeSummary(); document.getElementById('emailPreview').textContent = buildEmailText(s.unticked, s.extras, s.noLuggage); }

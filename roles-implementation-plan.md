@@ -34,10 +34,12 @@ Legend: **Full** = can view and use normally · **View** = visible but read-only
 | Checklist (tick room, flag no-luggage) | Full | Full | Full | Hidden | Hidden | Hidden |
 | Extra (report unlisted occupied room) | Full | Full | Full | Hidden | Hidden | Hidden |
 | Summary (view discrepancies/no-luggage lists) | View | Full | Full | View | Full | Full |
-| Confirm report as Housekeeping | Hidden | Full | Full (optional) | Hidden | Hidden | Hidden |
-| Confirm report as Front Desk | Hidden | Hidden | Hidden | Hidden | Full | Full (optional) |
+| Submit report to Front Desk (locks HK checklist) | Hidden | Full | Full (optional) | Hidden | Hidden | Hidden |
+| Receive report (Front Desk) | Hidden | Hidden | Hidden | Hidden | Full | Full (optional) |
+| Confirm receipt as Front Desk | Hidden | Hidden | Hidden | Hidden | Full | Full (optional) |
 | Print report | Hidden | Full | Full | Hidden | Full | Full |
 | History (browse past days) | Hidden | Full | Full | Hidden | Full | Full |
+| Staff management (own department) | Hidden | Hidden | Full | Hidden | Hidden | Full |
 
 Notes on intent (for judgment calls not explicitly covered above):
 - Line staff (`hk_staff`, `fo_staff`) should only see what's needed for their direct daily task — nothing else, to keep their view simple and avoid confusion.
@@ -45,6 +47,7 @@ Notes on intent (for judgment calls not explicitly covered above):
 - Access is **strictly departmental**: each role can only work within its own department. Managers have **Full** access to their own department's operational tabs (an `hk_manager` can tick rooms and flag luggage; an `fo_manager` can upload/replace the daily list) and **no access at all** to the other department's operational tabs.
 - **Staff management** (manager admin tab) is also strictly departmental: each manager can only see, add, edit, and deactivate people in their own department — enforced both in the UI and in the `staff` table RLS (migration 004).
 - History (archive) is supervisor/manager only, so line staff stay focused on today's task.
+- **Report handoff workflow** (in-app delivery between departments): Housekeeping submits the report to Front Desk — this records the HK supervisor/manager's confirmation *and locks the HK checklist & extra rooms* so no further edits are possible until the report is recalled. Front Desk then **receives** the report, and finally a FD supervisor/manager **confirms receipt**. Status flows `in_progress → submitted → received → signed`, tracked visually on the Summary tab for all roles. HK can **recall** (un-submit) at any point before FD confirms, which unlocks the checklist. FD can **undo receive** or **un-confirm** to step status back. Email text and the print report reflect the current handoff status and both signatures.
 
 ## Implementation Requirements
 
@@ -103,8 +106,12 @@ After implementing, verify for **each** of the six roles:
 - [ ] View-only tabs render data correctly but reject any attempted write (test by trying the underlying Supabase call directly, not just clicking disabled buttons).
 - [ ] A `hk_staff` account cannot upload/replace the daily list.
 - [ ] An `fo_staff` account cannot tick rooms or confirm the report.
-- [ ] Only supervisor/manager roles can complete the Housekeeping and Front Desk confirmations respectively.
+- [ ] Only supervisor/manager roles can submit the report (Housekeeping) and receive/confirm it (Front Desk), respectively.
 - [ ] Managers have **Full** access to their own department's operational tabs and **no access** to the other department's (Setup hidden for `hk_manager`; Checklist/Extra hidden for `fo_manager`).
+- [ ] **Handoff workflow:** a HK supervisor/manager can submit, which locks the checklist (HK staff can no longer tick/flag/remove-extras until recall); FD cannot sign before receiving; FD receive then confirm sets the final `signed` status; the Summary tracker shows the correct status for all roles.
+- [ ] **Undo chain:** HK recall unlocks the checklist; FD un-confirm returns to `received`; FD undo-receive returns to `submitted`.
+- [ ] Email text and print output reflect the current handoff status and both signatures at each step.
+- [ ] Legacy days (saved before the handoff field existed) load with status derived correctly from their stored signatures.
 
 ## Open Questions to Resolve Before Starting
 
