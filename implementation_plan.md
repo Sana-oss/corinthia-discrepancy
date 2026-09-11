@@ -1,6 +1,52 @@
-# Implementation Plan
+# Deploy Corinthia Discrepancy Report to Vercel
 
-[Overview]
+## Overview
+Deploy the static Corinthia Discrepancy PWA to **Vercel** (free tier), wire up the existing Supabase backend (`fylgfgwdrxjsarjahiaj`), and verify the live site end-to-end (HTTPS, offline, login, print logo).
+
+## Scope
+Presentation/PWA deployment only. No business-logic, schema, or data changes. `npm run build` (existing `build.js`) regenerates `config.js` from env vars in Vercel.
+
+## Pre-flight checklist (manual, user)
+1. Run `supabase/schema.sql` in Supabase SQL Editor (re-runnable).
+2. Run migrations `001`→`007` in order (SQL Editor).
+3. Deploy `create-staff` edge function via Supabase CLI.
+4. Set `SUPABASE_SERVICE_ROLE_KEY` secret (only if CLI warns).
+5. Confirm commercial font web-embedding rights for the production domain.
+
+## Files
+- **New** `vercel.json` — Vercel build command, output dir (repo root), rewrites (`/` → `discrepancy-report.html`), headers (sw.js no-cache + Service-Worker-Allowed, manifest content-type, immutable asset caching, no-cache HTML).
+- No existing files change; `config.js` remains gitignored, generated at build.
+
+## Vercel dashboard steps (manual, user)
+1. Import `Sana-oss/corinthia-discrepancy` at vercel.com/new.
+2. Build command `npm run build`, output dir `.` (auto from vercel.json).
+3. Add env vars `SUPABASE_URL` = `https://fylgfgwdrxjsarjahiaj.supabase.co` and `SUPABASE_ANON_KEY` = (from `.env`).
+4. Deploy.
+
+## Supabase CLI steps (manual, user)
+```
+npm install -g supabase
+supabase login
+supabase link --project-ref fylgfgwdrxjsarjahiaj
+supabase functions deploy create-staff
+supabase secrets set SUPABASE_SERVICE_ROLE_KEY=<service_role key>   # only if warned
+```
+
+## Post-deploy verification
+| Check | Expected |
+|---|---|
+| HTTPS loads | no mixed-content |
+| Fonts 200 | 3 OTFs, no 404 |
+| sw.js registered/activated | DevTools Application tab |
+| Offline reload | shell + logo from cache |
+| Login | staff account → main app |
+| Print report | Corinthia logo in preview |
+
+## Risks
+- Commercial fonts: confirm web license.
+- Migrations must run in order; schema.sql first (re-runnable), then 001–007.
+- If create-staff not deployed, Staff tab degrades gracefully (manual user creation).
+- Old SW v2 auto-updates to v3; activate clears stale caches.
 
 Rebrand the presentation layer of the Room Discrepancy Report PWA (Corinthia Hotel Tripoli) to the official Corinthia Hotels visual identity, without touching any business logic, backend functionality, event handlers, or data structures.
 
