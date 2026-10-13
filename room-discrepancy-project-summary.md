@@ -36,9 +36,9 @@ This removes Front Desk's redundant room walk entirely, while keeping the same a
 To make this practical on a phone with no extra software or training, a lightweight mobile web app was built:
 
 - **PDF upload:** Front Desk uploads the Guests In House PDF directly — no retyping. The app reads the report's layout and extracts each room number and arrival date automatically, ignoring names, rates, and other columns. (Tested against a live report from the property — matched the report's own room count exactly.)
-- **Live checklist:** Housekeeping opens the same list on their phone and taps each room as they confirm it's occupied, with a one-tap flag for "no luggage."
+- **Live checklist:** Housekeeping opens the same list on their phone and taps each room as they confirm it's occupied, with one-tap flags for "no luggage" and "DND" (Do Not Disturb).
 - **Extra rooms:** Any occupied room found that isn't on the list at all can be logged on the spot as a discrepancy.
-- **Auto-generated summary & email:** The app calculates all discrepancies and no-luggage flags and generates ready-to-send email text for Front Desk.
+- **Auto-generated summary & email:** The app calculates all discrepancies, no-luggage flags, and DND rooms, and generates ready-to-send email text for Front Desk.
 - **Digital confirmation:** Both Housekeeping and Front Desk confirm digitally (name + timestamp) once reviewed — replacing the paper signatures, with the confirmation recorded directly in the email.
 - All staff see the same shared, live data on their own phones — no separate spreadsheets or paper copies to reconcile.
 

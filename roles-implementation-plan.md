@@ -31,9 +31,9 @@ Legend: **Full** = can view and use normally · **View** = visible but read-only
 | Screen / Action | hk_staff | hk_supervisor | hk_manager | fo_staff | fo_supervisor | fo_manager |
 |---|---|---|---|---|---|---|
 | Setup (upload/paste today's list, Save) | Hidden | Hidden | Hidden | Full | Full | Full |
-| Checklist (tick room, flag no-luggage) | Full | Full | Full | Hidden | Hidden | Hidden |
+| Checklist (tick room, flag no-luggage, set DND) | Full | Full | Full | Hidden | Hidden | Hidden |
 | Extra (report unlisted occupied room) | Full | Full | Full | Hidden | Hidden | Hidden |
-| Summary (view discrepancies/no-luggage lists) | View | Full | Full | View | Full | Full |
+| Summary (view discrepancies/no-luggage/DND lists) | View | Full | Full | View | Full | Full |
 | Submit report to Front Desk (locks HK checklist) | Hidden | Full | Full (optional) | Hidden | Hidden | Hidden |
 | Receive report (Front Desk) | Hidden | Hidden | Hidden | Hidden | Full | Full (optional) |
 | Confirm receipt as Front Desk | Hidden | Hidden | Hidden | Hidden | Full | Full (optional) |
