@@ -19,7 +19,17 @@ const env = loadEnv(path.join(__dirname, '.env'));
 const url = env.SUPABASE_URL || '';
 const key = env.SUPABASE_ANON_KEY || '';
 
-if (!url || !key || url.includes('YOUR-PROJECT') || key.includes('YOUR-ANON')) {
+const valid = url && key && !url.includes('YOUR-PROJECT') && !key.includes('YOUR-ANON');
+
+// On a hosting build machine (e.g. Vercel) there is no .env: keep the
+// config.js committed with the repo instead of overwriting it with empty
+// values (which would make the app show a "not configured" notice).
+if (!valid && fs.existsSync(path.join(__dirname, 'config.js'))) {
+  console.warn('[build] no .env with real Supabase values — keeping the committed config.js.');
+  process.exit(0);
+}
+
+if (!valid) {
   console.warn('[build] SUPABASE_URL / SUPABASE_ANON_KEY not set in .env — app will show a "not configured" notice.');
 }
 
