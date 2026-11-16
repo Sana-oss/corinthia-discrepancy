@@ -653,6 +653,57 @@
       transform: translateX(-50%) translateY(0);
     }
 
+    /* --- Change password modal --- */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(17, 17, 17, .45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 30;
+    }
+
+    .modal-overlay.hidden {
+      display: none;
+    }
+
+    .modal-card {
+      width: 100%;
+      max-width: 380px;
+      padding: 28px 24px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+    }
+
+    .modal-title {
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: 400;
+      color: var(--ink);
+      margin: 0 0 4px;
+    }
+
+    .modal-card input[type=password] {
+      width: 100%;
+      padding: 12px 13px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      font-family: var(--font-mono);
+      font-size: 13.5px;
+      color: var(--ink);
+      margin-top: 8px;
+      box-sizing: border-box;
+    }
+
+    .modal-card input[type=password]:focus {
+      outline: none;
+      border-color: var(--ink);
+    }
+
     /* --- Bottom nav — corinthia.com label spec --- */
     nav {
       position: fixed;
@@ -1288,6 +1339,7 @@
     <div class="who" id="whoBadge" style="padding:8px 20px;display:none;">
       <span id="whoName"></span>
       <span class="role-chip" id="whoRole"></span>
+      <button class="link-btn" id="changePwdBtn">Change password</button>
       <button class="link-btn" id="logoutBtn">Sign out</button>
     </div>
 
@@ -1480,6 +1532,21 @@
     </main>
 
     <div class="toast" id="toast"></div>
+
+    <!-- Change password modal — available to EVERY signed-in employee -->
+    <div class="modal-overlay hidden" id="changePwdOverlay">
+      <div class="modal-card">
+        <div class="modal-title">Change password</div>
+        <p class="panel-label">Your new password takes effect immediately.</p>
+        <input type="password" id="pwdCurrent" placeholder="Current password" autocomplete="current-password">
+        <input type="password" id="pwdNew" placeholder="New password (min 6 characters)" autocomplete="new-password">
+        <input type="password" id="pwdConfirm" placeholder="Confirm new password" autocomplete="new-password">
+        <div id="pwdError" class="login-error"></div>
+        <button class="btn-primary" id="pwdSaveBtn">Update password</button>
+        <button class="btn-secondary" id="pwdCancelBtn" style="width:100%;margin-top:8px;">Cancel</button>
+      </div>
+    </div>
+
     <div id="printArea"></div>
 
     <!-- Nav is built from JS at sign-in: only tabs the signed-in role can access
@@ -3426,6 +3493,73 @@
         }
       }
 
+      // === Change password (self-service) ===
+      // Every signed-in employee can change their OWN password. Identity is
+      // carried by the session token (sbHeaders); the change-password Edge
+      // Function re-verifies the CURRENT password server-side with a real
+      // GoTrue grant before writing the new one with the service role, which
+      // never leaves the server. Managers' create/reset flows are unchanged.
+      function openChangePwdModal() {
+        resetChangePwdModal();
+        document.getElementById('changePwdOverlay').classList.remove('hidden');
+        document.getElementById('pwdCurrent').focus();
+      }
+
+      function closeChangePwdModal() {
+        document.getElementById('changePwdOverlay').classList.add('hidden');
+        resetChangePwdModal();
+      }
+
+      function resetChangePwdModal() {
+        ['pwdCurrent', 'pwdNew', 'pwdConfirm'].forEach(id => {
+          document.getElementById(id).value = '';
+        });
+        document.getElementById('pwdError').textContent = '';
+        const btn = document.getElementById('pwdSaveBtn');
+        btn.disabled = false;
+        btn.textContent = 'Update password';
+      }
+
+      async function changePassword() {
+        const current = document.getElementById('pwdCurrent').value;
+        const next = document.getElementById('pwdNew').value;
+        const confirm = document.getElementById('pwdConfirm').value;
+        const errEl = document.getElementById('pwdError');
+        errEl.textContent = '';
+
+        if (!current || !next || !confirm) { errEl.textContent = 'Fill in all three fields.'; return; }
+        if (next !== confirm) { errEl.textContent = 'New password and confirmation do not match.'; return; }
+        if (next.length < 6) { errEl.textContent = 'New password must be at least 6 characters.'; return; }
+        if (next === current) { errEl.textContent = 'The new password must be different from your current password.'; return; }
+
+        if (!sbConfigured() || !session) { errEl.textContent = 'Not signed in.'; return; }
+
+        const btn = document.getElementById('pwdSaveBtn');
+        btn.disabled = true; btn.textContent = 'Updating…';
+        try {
+          const url = SUPABASE_URL + '/functions/v1/change-password';
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: sbHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ current_password: current, new_password: next }),
+          });
+          const body = await res.json().catch(() => ({}));
+          if (res.status === 401) {
+            errEl.textContent = body.error || 'Your current password is incorrect.';
+          } else if (!res.ok) {
+            errEl.textContent = body.error || 'Could not change the password — try again.';
+          } else {
+            closeChangePwdModal();
+            showToast(body.message || 'Password changed');
+          }
+        } catch (e) {
+          console.error(e);
+          errEl.textContent = 'Could not change the password — check your connection.';
+        } finally {
+          btn.disabled = false; btn.textContent = 'Update password';
+        }
+      }
+
       async function onSignedIn() {
         try {
           me = await sbGetMe();
@@ -3484,6 +3618,7 @@
         session = null; me = null;
         document.body.removeAttribute('data-role');
         document.getElementById('whoBadge').style.display = 'none';
+        closeChangePwdModal();
         document.getElementById('mainView').classList.add('hidden');
         document.getElementById('mainView2').classList.add('hidden');
         document.getElementById('loadingView').classList.add('hidden');
@@ -3527,6 +3662,16 @@
         if (e.key === 'Enter') tryLogin();
       });
       document.getElementById('logoutBtn').addEventListener('click', signOut);
+      // Change password modal wiring
+      document.getElementById('changePwdBtn').addEventListener('click', openChangePwdModal);
+      document.getElementById('pwdCancelBtn').addEventListener('click', closeChangePwdModal);
+      document.getElementById('pwdSaveBtn').addEventListener('click', changePassword);
+      document.getElementById('pwdConfirm').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') changePassword();
+      });
+      document.getElementById('changePwdOverlay').addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) closeChangePwdModal();
+      });
       // Live-sync fallback: catch up whenever the window regains focus or the tab
       // becomes visible (also handles the day-rollover reload). Realtime covers
       // continuous changes; this covers devices that slept/offlined.

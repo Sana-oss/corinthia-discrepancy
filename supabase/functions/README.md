@@ -1,5 +1,42 @@
 # Supabase Edge Functions
 
+## change-password — employee self-service password change
+
+Every signed-in employee can change **their own** password from the header
+(**Change password** next to Sign out). The app posts
+`{ current_password, new_password }` to this function with the caller's session
+token.
+
+### Deploy (one time, per project)
+
+```bash
+supabase functions deploy change-password
+```
+
+### How it's secured
+
+- **Self-only scoping:** the caller's identity comes ONLY from their verified
+  JWT (`auth.getUser()`); the request body carries no email and no user id, so
+  a caller can never target another employee's account.
+- **Current-password verification:** Supabase's standard password update does
+  not verify the current password, so this function re-verifies it server-side
+  with a real GoTrue password grant (the same check a sign-in performs) —
+  using the **anon key**, never the service role. A wrong current password
+  returns HTTP 401 without touching anything.
+- **The write:** the new password is applied with the service role via
+  `updateUserById` on the caller's own id. The service-role key lives only
+  server-side.
+- **Validation (both client and server):** minimum length 6 (same minimum the
+  manager create flow uses) and new password ≠ current password.
+- **No password material** is stored in the app (GoTrue keeps only a bcrypt
+  hash), logged, or echoed back in responses.
+- Supabase's `verify_jwt` (on by default) blocks all unauthenticated calls.
+
+### Manager flows unchanged
+
+GM / FO Manager / HK Manager keep issuing initial passwords and resetting
+passwords within their scope through **create-staff** below.
+
 ## create-staff — employee logins from the Staff tab
 
 The app's **Staff tab** calls this function so a manager can create an
