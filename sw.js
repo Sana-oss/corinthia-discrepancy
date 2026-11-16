@@ -9,7 +9,7 @@
 //   - Supabase API traffic is passed through untouched (never cached): those
 //     responses carry auth tokens and per-user data. The app handles its own
 //     offline caching + write outbox in IndexedDB (see discrepancy-report.html).
-const VERSION = 'v4';
+const VERSION = 'v5'; // v5: rebranded icons generated from new-logo.svg
 const SHELL_CACHE = 'shell-' + VERSION;
 const ASSET_CACHE = 'assets-' + VERSION;
 
@@ -23,6 +23,7 @@ const SHELL_FILES = [
   './icon-maskable-192.png',
   './icon-maskable-512.png',
   './new-logo.svg',
+  './favicon.svg',
   './Font/IvyOraDisplay-Regular.otf',
   './Font/GT-America-LC-Extended-Regular.otf',
   './Font/GT-America-LC-Extended-Medium.otf'

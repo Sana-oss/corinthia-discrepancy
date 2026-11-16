@@ -6,5 +6,8 @@
   "scripts": {
     "build": "node build.js",
     "start": "node build.js && npx http-server -p 8080"
+  },
+  "dependencies": {
+    "sharp": "^0.35.5"
   }
 }

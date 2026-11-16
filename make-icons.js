@@ -1,110 +1,124 @@
-// Generates the PWA icon PNGs. No dependencies — hand-rolled PNG encoder
-// (zlib + CRC32 from Node's stdlib). Outputs:
-//   icon-192.png / icon-512.png            — rounded square, tick mark
-//   icon-maskable-192.png / -512.png       — full-bleed, tick inside the
-//                                            maskable "safe zone" (~80%)
-// Re-run with `node make-icons.js` after changing colors, or swap the files
-// for the real Corinthia logo (keep the same file names).
+// Generates the PWA icon PNGs from the Corinthia logo (new-logo.svg).
+// Requires the `sharp` dependency (npm install sharp).
+// Outputs, overwriting in place (same names as before, so manifest / HTML /
+// service worker need no changes):
+//   icon-192.png / icon-512.png            — ivory square, logo centered
+//   icon-maskable-192.png / -512.png       — full-bleed background, logo kept
+//                                            inside the maskable "safe zone"
+//                                            (~80% diameter)
+//   favicon.svg                            — square, mark-only (column symbol,
+//                                            no wordmark) for the browser tab
 const fs = require('fs');
-const zlib = require('zlib');
+const path = require('path');
+const sharp = require('sharp');
 
-const INK   = [31, 29, 25];    // Corinthia ink  --ink  #1f1d19 (icon + text)
-const IVORY = [241, 240, 238]; // Corinthia ivory --bg  #f1f0ee (icon background)
+const IVORY = { r: 241, g: 240, b: 238, alpha: 1 };   // --bg  #f1f0ee
+const INK   = { r: 31,  g: 29,  b: 25,  alpha: 1 };   // --ink #1f1d19
 
-// --- minimal PNG encoder ---------------------------------------------------
-const CRC_TABLE = (() => {
-  const t = new Int32Array(256);
-  for (let n = 0; n < 256; n++) {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
-    t[n] = c;
-  }
-  return t;
-})();
-function crc32(buf) {
-  let c = -1;
-  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
-  return (c ^ -1) >>> 0;
-}
-function chunk(type, data) {
-  const len = Buffer.alloc(4);
-  len.writeUInt32BE(data.length, 0);
-  const typeBuf = Buffer.from(type, 'ascii');
-  const crc = Buffer.alloc(4);
-  crc.writeUInt32BE(crc32(Buffer.concat([typeBuf, data])), 0);
-  return Buffer.concat([len, typeBuf, data, crc]);
-}
-function encodePNG(width, height, pixels) {
-  const sig = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(width, 0);
-  ihdr.writeUInt32BE(height, 4);
-  ihdr[8] = 8;  // bit depth
-  ihdr[9] = 6;  // color type: RGBA
-  // Add the per-scanline filter byte (0 = none) before compressing.
-  const stride = 1 + width * 4;
-  const raw = Buffer.alloc(height * stride);
-  for (let y = 0; y < height; y++) {
-    raw[y * stride] = 0;
-    pixels.copy(raw, y * stride + 1, y * width * 4, (y + 1) * width * 4);
-  }
-  const idat = zlib.deflateSync(raw, { level: 9 });
-  return Buffer.concat([sig, chunk('IHDR', ihdr), chunk('IDAT', idat), chunk('IEND', Buffer.alloc(0))]);
+// Recolor the logo to brand ink (the source SVG has no fill attributes,
+// so its paths default to black) and force a transparent canvas.
+function tintedSvg(svgPath) {
+  let svg = fs.readFileSync(svgPath, 'utf8');
+  svg = svg.replace('<svg id="Layer_1"', '<svg id="Layer_1" fill="#1f1d19"');
+  return Buffer.from(svg);
 }
 
-// --- drawing ----------------------------------------------------------------
-function distToSegment(px, py, x1, y1, x2, y2) {
-  const dx = x2 - x1, dy = y2 - y1;
-  const l2 = dx * dx + dy * dy;
-  let t = l2 === 0 ? 0 : ((px - x1) * dx + (py - y1) * dy) / l2;
-  t = Math.max(0, Math.min(1, t));
-  const ex = x1 + t * dx - px, ey = y1 + t * dy - py;
-  return Math.sqrt(ex * ex + ey * ey);
+async function trimmedLogo(svgPath) {
+  // Render large, auto-crop to the artwork's bounding box.
+  const buf = await sharp(tintedSvg(svgPath), { density: 200 })
+    .trim({ threshold: 8 })
+    .png()
+    .toBuffer();
+  const meta = await sharp(buf).metadata();
+  return { buf, width: meta.width, height: meta.height };
 }
-function makeIcon(size, maskable) {
-  const px = Buffer.alloc(size * size * 4);
-  const cornerR = size * 0.18;                 // rounded corners (regular only)
-  const tickScale = maskable ? 0.62 : 0.72;    // tick size (maskable keeps a margin)
-  const strokeHalf = size * (maskable ? 0.055 : 0.075);
-  const half = size / 2;
-  // Tick polyline in unit space (centered), then scaled + translated.
-  const pts = [[-0.21, 0.02], [-0.05, 0.17], [0.24, -0.18]].map(([x, y]) => [
-    half + x * size * tickScale,
-    half + y * size * tickScale
-  ]);
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const cx = x + 0.5, cy = y + 0.5;
-      let alpha = 255;
-      if (!maskable) {
-        const rx = Math.min(cx, size - cx), ry = Math.min(cy, size - cy);
-        if (rx < cornerR && ry < cornerR) {
-          const d = Math.sqrt(Math.pow(rx - cornerR, 2) + Math.pow(ry - cornerR, 2));
-          alpha = Math.max(0, Math.min(255, Math.round((cornerR - d) * 255)));
-        }
+
+async function makeIcon(logo, size, maskable, outFile) {
+  // Regular icons: logo takes ~68% of the square.
+  // Maskable: content must sit inside the 80%-diameter safe zone; a wide
+  // logo needs extra margin, so scale to ~46% and center it.
+  const contentSize = Math.round(size * (maskable ? 0.46 : 0.68));
+  const inner = await sharp(logo.buf)
+    .resize({ width: contentSize, height: contentSize, fit: 'inside' })
+    .png()
+    .toBuffer();
+  const innerMeta = await sharp(inner).metadata();
+  const padX = Math.round((size - innerMeta.width) / 2);
+  const padY = Math.round((size - innerMeta.height) / 2);
+  await sharp({
+    create: { width: size, height: size, channels: 4, background: IVORY }
+  })
+    .composite([{ input: inner, left: padX, top: padY }])
+    .png()
+    .toFile(path.join(__dirname, outFile));
+  console.log('[icons] wrote ' + outFile);
+}
+
+// Renders the full logo, then finds the mark's bounding box by scanning raw
+// pixels in the upper band of the artwork (the column symbol lives above the
+// wordmark, which starts at y≈280 in viewBox units).
+async function markFromSvg(svgPath) {
+  const SCALE = 200 / 72; // density 200 → px per viewBox unit
+  const full = await sharp(tintedSvg(svgPath), { density: 200 }).png().toBuffer();
+  const { data, info } = await sharp(full).raw().toBuffer({ resolveWithObject: true });
+  // Scan window: x 500-640, y 100-250 in viewBox units (the mark's band).
+  const xs = Math.round(500 * SCALE), xe = Math.round(640 * SCALE);
+  const ys = Math.round(100 * SCALE), ye = Math.round(250 * SCALE);
+  let minX = xe, minY = ye, maxX = xs, maxY = ys;
+  for (let y = ys; y < Math.min(ye, info.height); y++) {
+    for (let x = xs; x < Math.min(xe, info.width); x++) {
+      if (data[(y * info.width + x) * 4 + 3] > 8) { // ink stroke
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
       }
-      const d = Math.min(
-        distToSegment(cx, cy, pts[0][0], pts[0][1], pts[1][0], pts[1][1]),
-        distToSegment(cx, cy, pts[1][0], pts[1][1], pts[2][0], pts[2][1])
-      );
-      const cov = Math.max(0, Math.min(1, strokeHalf - d + 0.5)); // 1px AA edge
-      const o = (y * size + x) * 4;
-      px[o]     = Math.round(INK[0] * (1 - cov) + IVORY[0] * cov);
-      px[o + 1] = Math.round(INK[1] * (1 - cov) + IVORY[1] * cov);
-      px[o + 2] = Math.round(INK[2] * (1 - cov) + IVORY[2] * cov);
-      px[o + 3] = alpha;
     }
   }
-  return encodePNG(size, size, px);
+  if (minX >= maxX) throw new Error('[icons] mark not found in scan window — logo file changed?');
+  // px coords are absolute in the full render, so px/SCALE is already the
+  // viewBox unit coordinate; the scan window only filters which px we look at.
+  return {
+    x: minX / SCALE,
+    y: minY / SCALE,
+    w: (maxX - minX + 1) / SCALE,
+    h: (maxY - minY + 1) / SCALE
+  };
 }
 
-const files = [
-  ['icon-192.png', 192, false],
-  ['icon-512.png', 512, false],
-  ['icon-maskable-192.png', 192, true],
-  ['icon-maskable-512.png', 512, true],
-];
-for (const [name, size, maskable] of files) {
-  fs.writeFileSync(require('path').join(__dirname, name), makeIcon(size, maskable));
-  console.log('[icons] wrote ' + name);
+// Builds favicon.svg: square ivory canvas, ink mark centered with breathing
+// room. Mark paths are copied verbatim from the source SVG (fill is
+// inherited from the root <svg> element).
+async function makeFavicon(svgPath) {
+  const source = fs.readFileSync(svgPath, 'utf8');
+  const markPrefixes = ['M540.51', 'M600.34', 'M588.9', 'M576.96', 'M521.17', 'M533.23', 'M524.31'];
+  const paths = (source.match(/<path\b[^>]*\/>/g) || [])
+    .filter((el) => markPrefixes.some((p) => el.includes('d="' + p)));
+  if (paths.length !== markPrefixes.length) {
+    throw new Error('[icons] expected ' + markPrefixes.length + ' mark paths, found ' + paths.length + ' — logo file changed?');
+  }
+  const box = await markFromSvg(svgPath);
+  const side = Math.max(box.w, box.h) * 1.5; // ~17% margin each side
+  const x0 = box.x + box.w / 2 - side / 2;
+  const y0 = box.y + box.h / 2 - side / 2;
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + x0.toFixed(2) + ' ' + y0.toFixed(2) + ' ' + side.toFixed(2) + ' ' + side.toFixed(2) + '" fill="#1f1d19">\n' +
+    '  <rect x="' + x0.toFixed(2) + '" y="' + y0.toFixed(2) + '" width="' + side.toFixed(2) + '" height="' + side.toFixed(2) + '" fill="#f1f0ee"/>\n' +
+    '  ' + paths.join('\n  ') + '\n' +
+    '</svg>\n';
+  fs.writeFileSync(path.join(__dirname, 'favicon.svg'), svg);
+  console.log('[icons] wrote favicon.svg');
 }
+
+(async () => {
+  const logo = await trimmedLogo(path.join(__dirname, 'new-logo.svg'));
+  console.log('[icons] trimmed logo: ' + logo.width + 'x' + logo.height);
+  await makeIcon(logo, 192, false, 'icon-192.png');
+  await makeIcon(logo, 512, false, 'icon-512.png');
+  await makeIcon(logo, 192, true, 'icon-maskable-192.png');
+  await makeIcon(logo, 512, true, 'icon-maskable-512.png');
+  await makeFavicon(path.join(__dirname, 'new-logo.svg'));
+})().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
