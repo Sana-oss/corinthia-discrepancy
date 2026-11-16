@@ -13,7 +13,7 @@ From the repo root, with the Supabase CLI installed and linked:
 ```bash
 # 1. Install the CLI if you haven't:  npm install -g supabase
 # 2. Link the project (asks for project ref):
-supabase link --project-ref <your-project-ref>
+supabase link --project-ref fylgfgwdrxjsarjahiaj
 
 # 3. Deploy the function:
 supabase functions deploy create-staff
@@ -27,10 +27,19 @@ supabase secrets set SUPABASE_SERVICE_ROLE_KEY=<your service_role key>
 
 - The browser never sees the service-role key — it lives only in the function.
 - The function verifies the caller's JWT and checks the `staff` table to prove
-  the caller is an **active `hk_manager`/`fo_manager`** before doing anything.
+  the caller is an **active `hk_manager`, `fo_manager` or `gm_admin`** before
+  doing anything.
 - It re-enforces the **departmental rule** (an `hk_manager` can only create
   `hk_*` logins; `fo_manager` only `fo_*`), because the service role bypasses
-  the table RLS that normally enforces this.
+  the table RLS that normally enforces this. A `gm_admin` may create any
+  departmental login, but never another `gm_admin`.
+- Extra server-side guards (defense in depth beyond RLS):
+  - **create** rejects the request when the email already has a staff row in
+    *another* department (HTTP 403) — the caller can't silently take over a
+    cross-department row via the ALREADY_EXISTS fallback.
+  - **reset** requires an existing staff row for that email (HTTP 404 otherwise)
+    and the same department check — a login without a staff row can't be
+    password-reset by a random manager.
 - Supabase's `verify_jwt` (on by default) blocks all unauthenticated calls.
 
 ### If the function is NOT deployed

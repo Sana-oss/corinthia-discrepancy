@@ -8,9 +8,9 @@
 // Why a function? The browser only has the anon key; creating auth users
 // requires the service-role key, which must never ship to the client. This
 // function holds the service-role key server-side, but only after proving the
-// caller is a signed-in, active manager — and it re-enforces the departmental
-// rule (hk_manager → hk_* roles only, fo_manager → fo_* roles only), because
-// the service role bypasses RLS.
+// caller is a signed-in, active manager or GM admin — and it re-enforces the
+// departmental rule (hk_manager → hk_* roles only, fo_manager → fo_* roles
+// only, gm_admin → any role), because the service role bypasses RLS.
 //
 // Deploy (once, from the project root, with the Supabase CLI linked):
 //   supabase functions deploy create-staff
@@ -38,7 +38,16 @@ const json = (body: unknown, status = 200) =>
 const ROLES = [
   "hk_staff", "hk_supervisor", "hk_manager",
   "fo_staff", "fo_supervisor", "fo_manager",
+  "gm_admin",
 ];
+
+// Only gm_admin rows can be created/assigned by a gm_admin — never by a
+// departmental manager.
+function callerDept(role: string): string {
+  return role === "hk_manager" || role === "fo_manager"
+    ? role.slice(0, 3) // "hk_" or "fo_"
+    : "gm"; // gm_admin manages every department
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
@@ -75,10 +84,12 @@ Deno.serve(async (req) => {
       .from("staff").select("role, active").eq("email", callerEmail).maybeSingle();
     if (callerErr || !callerRow) return json({ error: "You are not on the staff list." }, 403);
     if (callerRow.active === false) return json({ error: "Your account is disabled." }, 403);
-    if (callerRow.role !== "hk_manager" && callerRow.role !== "fo_manager") {
-      return json({ error: "Only managers can manage staff logins." }, 403);
+    if (callerRow.role !== "hk_manager" && callerRow.role !== "fo_manager" && callerRow.role !== "gm_admin") {
+      return json({ error: "Only managers or the GM admin can manage staff logins." }, 403);
     }
-    const dept = callerRow.role.slice(0, 3); // "hk_" or "fo_"
+    const dept = callerDept(callerRow.role); // "hk_", "fo_", or "gm" (cross-department)
+    // gm_admin may manage every department; departmental managers only their own.
+    const canManageRole = (role: string) => dept === "gm" || role.startsWith(dept);
 
     // --- 2. Parse + validate the request. ---
     const body = await req.json().catch(() => ({} as Record<string, unknown>));
@@ -94,8 +105,17 @@ Deno.serve(async (req) => {
     if (action === "create") {
       if (!fullName) return json({ error: "Enter the employee's full name." }, 400);
       if (!ROLES.includes(role)) return json({ error: "Pick a valid role." }, 400);
-      if (!role.startsWith(dept)) {
+      if (!canManageRole(role)) {
         return json({ error: "You can only add staff in your own department." }, 403);
+      }
+
+      // Guard BEFORE creating the login: never let a departmental manager
+      // attach their department to an email that already belongs to another
+      // department's staff row (that would silently convert that person).
+      const { data: existingRow } = await admin
+        .from("staff").select("role").eq("email", email).maybeSingle();
+      if (existingRow?.role && !canManageRole(String(existingRow.role))) {
+        return json({ error: "This email already belongs to a staff member in another department." }, 403);
       }
 
       // --- 3a. Create the login (confirmed, so they can sign in right away). ---
@@ -136,9 +156,16 @@ Deno.serve(async (req) => {
       return json({ error: "No login exists for that email yet. Add the employee with a password first." }, 404);
     }
 
-    // Departmental check: only reset logins for staff in the caller's department.
-    const { data: targetRow } = await admin.from("staff").select("role").eq("email", email).maybeSingle();
-    if (targetRow?.role && !String(targetRow.role).startsWith(dept)) {
+    // Departmental check, enforced strictly: the target MUST have a staff row
+    // (an email without one is not managed staff, and resetting its login here
+    // would let one department's manager reset another department's account).
+    // The caller may only reset rows in their own department; gm_admin any.
+    const { data: targetRow } = await admin
+      .from("staff").select("role").eq("email", email).maybeSingle();
+    if (!targetRow?.role) {
+      return json({ error: "No staff record exists for that email — add the employee first." }, 404);
+    }
+    if (!canManageRole(String(targetRow.role))) {
       return json({ error: "You can only reset passwords for staff in your own department." }, 403);
     }
 

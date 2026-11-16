@@ -8,6 +8,7 @@
   <meta name="description" content="Daily room discrepancy checklist and handoff for Corinthia Hotel Tripoli.">
   <meta name="theme-color" content="#1f1d19">
   <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="mobile-web-app-capable" content="yes">
@@ -955,6 +956,11 @@
       color: var(--dark-2);
     }
 
+    .who .role-chip.chip-gm {
+      background: var(--pending-bg);
+      color: var(--pending);
+    }
+
     .who button.link-btn {
       margin-left: auto;
     }
@@ -1049,6 +1055,11 @@
     .staff-chip .role-chip.chip-fo {
       background: #e8e6e3;
       color: var(--dark-2);
+    }
+
+    .staff-chip .role-chip.chip-gm {
+      background: var(--pending-bg);
+      color: var(--pending);
     }
 
     .staff-controls {
@@ -1432,9 +1443,9 @@
 
       <!-- STAFF TAB (managers only) -->
       <section id="tab-staff" class="hidden">
-        <p class="panel-label">Manage your department's staff — you only see people from your own department. Adding
-          someone here also creates their login: set an initial password and share it with them. Use Edit to change
-          roles or set a new password.</p>
+        <p class="panel-label" id="staffIntro">Manage your department's staff — you only see people from your own
+          department. Adding someone here also creates their login: set an initial password and share it with them.
+          Use Edit to change roles or set a new password.</p>
         <button class="btn-secondary" id="staffAddBtn">＋ Add staff</button>
         <div id="staffFormWrap" class="hidden">
           <div class="panel-title" id="staffFormTitle">Add staff</div>
@@ -1496,25 +1507,38 @@
       let listUploadedAt = null;
 
       // ============================================================
-      // Roles & permissions — six roles, two departments. Mirrors
-      // supabase/schema.sql and roles-implementation-plan.md.
+      // Roles & permissions — six departmental roles + the cross-
+      // department GM Admin. Mirrors supabase/schema.sql and
+      // roles-implementation-plan.md.
       // ============================================================
       const ROLE_LABELS = {
         hk_staff: 'HK Staff', hk_supervisor: 'HK Supervisor', hk_manager: 'HK Manager',
-        fo_staff: 'FD Staff', fo_supervisor: 'FD Supervisor', fo_manager: 'FD Manager'
+        fo_staff: 'FD Staff', fo_supervisor: 'FD Supervisor', fo_manager: 'FD Manager',
+        gm_admin: 'GM Admin'
       };
+      // Department of each role. gm_admin is the sentinel 'all': it manages
+      // staff in EVERY department (kept in sync with RLS + the edge function).
       const ROLE_DEPT = {
         hk_staff: 'hk', hk_supervisor: 'hk', hk_manager: 'hk',
-        fo_staff: 'fo', fo_supervisor: 'fo', fo_manager: 'fo'
+        fo_staff: 'fo', fo_supervisor: 'fo', fo_manager: 'fo',
+        gm_admin: 'all'
       };
       const ROLE_TIER = {
         hk_staff: 'staff', hk_supervisor: 'supervisor', hk_manager: 'manager',
-        fo_staff: 'staff', fo_supervisor: 'supervisor', fo_manager: 'manager'
+        fo_staff: 'staff', fo_supervisor: 'supervisor', fo_manager: 'manager',
+        gm_admin: 'manager'
       };
+      const MANAGER_ROLES = ['hk_manager', 'fo_manager', 'gm_admin'];
       function myRole() { return me ? me.role : ''; }
       function myDept() { return ROLE_DEPT[myRole()] || ''; }
       function myTier() { return ROLE_TIER[myRole()] || ''; }
       function isSupOrMgr() { const t = myTier(); return t === 'supervisor' || t === 'manager'; }
+      function canManageAnyDept() { return myDept() === 'all'; }
+      // Departmental authorization for staff management: a manager may only
+      // manage roles inside their own department; gm_admin manages every
+      // department. Mirrors RLS ("manager read/write own dept") and the
+      // create-staff edge function.
+      function canManageRole(role) { return canManageAnyDept() || ROLE_DEPT[role] === myDept(); }
 
       // Permission matrix from roles-implementation-plan.md.
       // Returns 'hidden' (not mounted / not reachable), 'view' (visible, read-only)
@@ -1522,6 +1546,8 @@
       function tabAccess(tab) {
         const dept = myDept(), tier = myTier();
         // Strictly departmental: managers work ONLY within their own department.
+        // gm_admin ('all') manages staff across departments but gets no
+        // operational tabs — it is an admin, not Housekeeping or Front Desk staff.
         if (tab === 'setup') {
           // Front Desk's tab: FD line staff + FO manager (own dept) can upload.
           return dept === 'fo' ? 'full' : 'hidden';
@@ -1822,15 +1848,24 @@
 
       // --- Staff management (managers only) ---
       // Uses the logged-in user's session, so RLS applies: only hk_manager /
-      // fo_manager can read every row (staff self read covers the others).
-
+      // fo_manager / gm_admin can read rows beyond their own (staff self read
+      // covers the others). The query itself is department-scoped for dept
+      // managers — they never fetch (or even request) other departments' rows.
       async function sbListStaff() {
         const client = sbClient();
         if (!client || !session) return [];
-        const { data, error } = await client
+        let q = client
           .from('staff')
           .select('email,full_name,role,active,created_at')
           .order('created_at');
+        // gm_admin ('all') sees every row; department managers only their own
+        // prefix. The pattern is escaped like the RLS policies ('hk\_%').
+        if (!canManageAnyDept()) {
+          const dept = myDept();
+          if (!dept) return [];
+          q = q.like('role', dept + '\\_%');
+        }
+        const { data, error } = await q;
         if (error) throw error;
         return data || [];
       }
@@ -2200,8 +2235,9 @@
 
       async function loadStaffList() {
         const wrap = document.getElementById('staffList');
+        updateStaffIntro();
         try {
-          staffRows = (await sbListStaff()).filter(r => ROLE_DEPT[r.role] === myDept());
+          staffRows = (await sbListStaff()).filter(r => canManageRole(r.role));
           applyDeptRoleOptions();
           renderStaff();
         } catch (e) {
@@ -2210,48 +2246,67 @@
         }
       }
 
-      function deptManagerCount() {
-        const mgrRole = myDept() === 'hk' ? 'hk_manager' : 'fo_manager';
-        return staffRows.filter(r => r.role === mgrRole).length;
+      // Intro text under the Staff tab. Department managers see their own
+      // department's blurb; gm_admin sees the cross-department one.
+      function updateStaffIntro() {
+        const intro = document.getElementById('staffIntro');
+        if (!intro) return;
+        intro.textContent = canManageAnyDept()
+          ? 'Manage staff across every department (GM Admin). Adding someone here also creates their login: set an initial password and share it with them. Use Edit to change roles or set a new password.'
+          : "Manage your department's staff — you only see people from your own department. Adding someone here also creates their login: set an initial password and share it with them. Use Edit to change roles or set a new password.";
       }
 
-      // A save/toggle that would demote or disable the LAST manager is blocked —
-      // a manager must always exist so staff-admin RLS can't lock everyone out.
-      // Returns an error message, or '' if the change is allowed.
+      function deptManagerCount(dept) {
+        return staffRows.filter(r => ROLE_DEPT[r.role] === dept && MANAGER_ROLES.includes(r.role)).length;
+      }
+
+      // A save/toggle that would demote or disable the LAST manager in the
+      // affected row's own department is blocked — a manager must always exist
+      // so staff-admin RLS can't lock that department out. gm_admin rows count
+      // toward the 'all' department. Returns an error message, or '' if allowed.
       function lastManagerError(candidateEmail, newRole, newActive) {
         const row = staffRows.find(r => r.email === candidateEmail);
         if (!row) return '';
-        const wasMgr = row.role === 'hk_manager' || row.role === 'fo_manager';
-        const nowMgr = newRole === 'hk_manager' || newRole === 'fo_manager';
+        const dept = ROLE_DEPT[row.role];
+        const wasMgr = MANAGER_ROLES.includes(row.role);
+        const nowMgr = MANAGER_ROLES.includes(newRole);
         const demoteOrDisable = (wasMgr && !nowMgr) || (wasMgr && nowMgr && !newActive);
-        if (demoteOrDisable && deptManagerCount() <= 1) {
-          return "Can't demote or disable the last manager in your department — you'd lock your department out of staff management.";
+        if (demoteOrDisable && deptManagerCount(dept) <= 1) {
+          return "Can't demote or disable the last manager in this department — you'd lock that department out of staff management.";
         }
         return '';
       }
 
       function staffRoleChip(role) {
         const dept = ROLE_DEPT[role] || '';
-        return `<span class="role-chip ${dept === 'hk' ? 'chip-hk' : 'chip-fo'}">${escapeHtml(ROLE_LABELS[role] || role)}</span>`;
+        const cls = dept === 'hk' ? 'chip-hk' : dept === 'fo' ? 'chip-fo' : 'chip-gm';
+        return `<span class="role-chip ${cls}">${escapeHtml(ROLE_LABELS[role] || role)}</span>`;
       }
 
-      // Strictly departmental: the role dropdown only offers the current manager's
-      // own department's roles. Static optgroups are restored on sign-out
-      // (sectionOriginal), so filtering here is enough.
+      // Hardened dropdown: cross-department roles are DISABLED (not just hidden
+      // optgroups), so a DOM/devtools tweak can't select them. Empty groups are
+      // hidden. gm_admin sees every group enabled.
       function applyDeptRoleOptions() {
         const sel = document.getElementById('staffRoleSelect');
         if (!sel) return;
-        const dept = myDept();
         Array.prototype.forEach.call(sel.querySelectorAll('optgroup'), g => {
-          const show = (dept === 'hk' && g.label === 'Housekeeping') || (dept === 'fo' && g.label === 'Front Desk');
-          g.style.display = show ? '' : 'none';
+          const opts = g.querySelectorAll('option');
+          let visible = 0;
+          Array.prototype.forEach.call(opts, o => {
+            const ok = canManageRole(o.value);
+            o.disabled = !ok;
+            if (ok) visible++;
+          });
+          g.style.display = visible ? '' : 'none';
         });
+        // Drop any previously selected value that is no longer manageable.
+        if (sel.value && !canManageRole(sel.value)) sel.value = '';
       }
 
       function renderStaff() {
         const wrap = document.getElementById('staffList');
         if (!staffRows.length) {
-          wrap.innerHTML = '<div class="empty">No ' + (myDept() === 'hk' ? 'Housekeeping' : 'Front Desk') + ' staff yet — add the first person below.</div>';
+          wrap.innerHTML = '<div class="empty">No staff yet' + (canManageAnyDept() ? '' : ' in ' + (myDept() === 'hk' ? 'Housekeeping' : 'Front Desk')) + ' — add the first person below.</div>';
           return;
         }
         wrap.innerHTML = staffRows.map(row => {
@@ -2287,6 +2342,11 @@
         document.getElementById('staffEmailInput').value = email || '';
         document.getElementById('staffEmailInput').disabled = !!email; // email = PK
         document.getElementById('staffRoleSelect').value = role || '';
+        // Guard against a pre-selected role outside the manager's department
+        // (e.g. restored markup or a stale value) — the dropdown itself is also
+        // hardened in applyDeptRoleOptions, this is the belt-and-braces check.
+        const sel = document.getElementById('staffRoleSelect');
+        if (sel.value && !canManageRole(sel.value)) sel.value = '';
         document.getElementById('staffActiveCheck').checked = (active !== false);
         const pass = document.getElementById('staffPassInput');
         pass.value = '';
@@ -2316,7 +2376,7 @@
         if (!name) { showToast('Enter a full name'); return; }
         if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { showToast('Enter a valid email'); return; }
         if (!role) { showToast('Pick a role'); return; }
-        if (ROLE_DEPT[role] !== myDept()) { showToast('Pick a role in your department'); return; }
+        if (!canManageRole(role)) { showToast('Pick a role in your department'); return; }
         // Add mode: a password is required — it creates the login they sign in with.
         // Edit mode: the password is optional — only sets a new one when filled.
         const isNew = !staffEditEmail;
@@ -2402,7 +2462,8 @@
       }
 
       async function toggleStaffActive(email, active) {
-        const err = lastManagerError(email, 'hk_manager', active);
+        const row = staffRows.find(r => r.email === email);
+        const err = lastManagerError(email, row ? row.role : 'hk_manager', active);
         if (err) { showToast(err); return; }
         try {
           await sbSetStaffActive(email, active);
@@ -3386,7 +3447,7 @@
         document.getElementById('whoName').textContent = me.full_name;
         const chip = document.getElementById('whoRole');
         chip.textContent = ROLE_LABELS[me.role] || me.role.replace('_', ' ');
-        chip.className = 'role-chip ' + (myDept() === 'hk' ? 'chip-hk' : 'chip-fo');
+        chip.className = 'role-chip ' + (myDept() === 'hk' ? 'chip-hk' : myDept() === 'fo' ? 'chip-fo' : 'chip-gm');
         document.getElementById('whoBadge').style.display = 'flex';
         document.getElementById('loginView').classList.add('hidden');
         document.getElementById('mainView').classList.remove('hidden');

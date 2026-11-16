@@ -15,12 +15,13 @@ Do not assume — check the current code and report back if anything below confl
 
 ## Roles
 
-Six roles across two departments:
+Six departmental roles across two departments, plus the cross-department GM Admin:
 
 | Department | Roles |
 |---|---|
 | Housekeeping | `hk_staff`, `hk_supervisor`, `hk_manager` |
 | Front Desk | `fo_staff`, `fo_supervisor`, `fo_manager` |
+| Cross-department (added in migration 008) | `gm_admin` |
 
 (Exact role key names above are suggestions — match whatever naming convention the existing codebase already uses, if any.)
 
@@ -28,24 +29,24 @@ Six roles across two departments:
 
 Legend: **Full** = can view and use normally · **View** = visible but read-only, actions disabled · **Hidden** = tab/section not shown at all
 
-| Screen / Action | hk_staff | hk_supervisor | hk_manager | fo_staff | fo_supervisor | fo_manager |
-|---|---|---|---|---|---|---|
-| Setup (upload/paste today's list, Save) | Hidden | Hidden | Hidden | Full | Full | Full |
-| Checklist (tick room, flag no-luggage, set DND) | Full | Full | Full | Hidden | Hidden | Hidden |
-| Extra (report unlisted occupied room) | Full | Full | Full | Hidden | Hidden | Hidden |
-| Summary (view discrepancies/no-luggage/DND lists) | View | Full | Full | View | Full | Full |
-| Submit report to Front Desk (locks HK checklist) | Hidden | Full | Full (optional) | Hidden | Hidden | Hidden |
-| Receive report (Front Desk) | Hidden | Hidden | Hidden | Hidden | Full | Full (optional) |
-| Confirm receipt as Front Desk | Hidden | Hidden | Hidden | Hidden | Full | Full (optional) |
-| Print report | Hidden | Full | Full | Hidden | Full | Full |
-| History (browse past days) | Hidden | Full | Full | Hidden | Full | Full |
-| Staff management (own department) | Hidden | Hidden | Full | Hidden | Hidden | Full |
+| Screen / Action | hk_staff | hk_supervisor | hk_manager | fo_staff | fo_supervisor | fo_manager | gm_admin |
+|---|---|---|---|---|---|---|---|
+| Setup (upload/paste today's list, Save) | Hidden | Hidden | Hidden | Full | Full | Full | Hidden |
+| Checklist (tick room, flag no-luggage, set DND) | Full | Full | Full | Hidden | Hidden | Hidden | Hidden |
+| Extra (report unlisted occupied room) | Full | Full | Full | Hidden | Hidden | Hidden | Hidden |
+| Summary (view discrepancies/no-luggage/DND lists) | View | Full | Full | View | Full | Full | Full |
+| Submit report to Front Desk (locks HK checklist) | Hidden | Full | Full (optional) | Hidden | Hidden | Hidden | Hidden |
+| Receive report (Front Desk) | Hidden | Hidden | Hidden | Hidden | Full | Full (optional) | Hidden |
+| Confirm receipt as Front Desk | Hidden | Hidden | Hidden | Hidden | Full | Full (optional) | Hidden |
+| Print report | Hidden | Full | Full | Hidden | Full | Full | Full |
+| History (browse past days) | Hidden | Full | Full | Hidden | Full | Full | Full |
+| Staff management (all departments for gm_admin) | Hidden | Hidden | Full | Hidden | Hidden | Full | Full |
 
 Notes on intent (for judgment calls not explicitly covered above):
 - Line staff (`hk_staff`, `fo_staff`) should only see what's needed for their direct daily task — nothing else, to keep their view simple and avoid confusion.
-- Sign-off (confirmation) is a supervisor/manager responsibility only — never available to line staff — so accountability for the final report is always traceable to a named supervisor or manager.
-- Access is **strictly departmental**: each role can only work within its own department. Managers have **Full** access to their own department's operational tabs (an `hk_manager` can tick rooms and flag luggage; an `fo_manager` can upload/replace the daily list) and **no access at all** to the other department's operational tabs.
-- **Staff management** (manager admin tab) is also strictly departmental: each manager can only see, add, edit, and deactivate people in their own department — enforced both in the UI and in the `staff` table RLS (migration 004).
+- Sign-off (confirmation) is a supervisor/manager responsibility only — never available to line staff — so accountability for the final report is always traceable to a named supervisor or manager. A `gm_admin` cannot sign confirmations on either side (it is not Housekeeping or Front Desk staff).
+- Access is **strictly departmental**: each role can only work within its own department. Managers have **Full** access to their own department's operational tabs (an `hk_manager` can tick rooms and flag luggage; an `fo_manager` can upload/replace the daily list) and **no access at all** to the other department's operational tabs. `gm_admin` gets **no operational tabs** at all — it is an administrator, not Housekeeping or Front Desk staff.
+- **Staff management** (manager admin tab) is also strictly departmental: each manager can only see, add, edit, and deactivate people in their own department — enforced both in the UI and in the `staff` table RLS (migration 004). `gm_admin` sees and manages staff in **every** department, but departmental managers never see or manage `gm_admin` rows (migration 008). A `gm_admin` cannot create another `gm_admin` from the app — those logins are bootstrapped in the Supabase dashboard.
 - History (archive) is supervisor/manager only, so line staff stay focused on today's task.
 - **Report handoff workflow** (in-app delivery between departments): Housekeeping submits the report to Front Desk — this records the HK supervisor/manager's confirmation *and locks the HK checklist & extra rooms* so no further edits are possible until the report is recalled. Front Desk then **receives** the report, and finally a FD supervisor/manager **confirms receipt**. Status flows `in_progress → submitted → received → signed`, tracked visually on the Summary tab for all roles. HK can **recall** (un-submit) at any point before FD confirms, which unlocks the checklist. FD can **undo receive** or **un-confirm** to step status back. Email text and the print report reflect the current handoff status and both signatures.
 

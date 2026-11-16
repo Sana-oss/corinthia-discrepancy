@@ -16,9 +16,11 @@ create table if not exists public.staff (
   created_at  timestamptz not null default now()
 );
 
--- Six roles across two departments (kept in sync with the app's ROLE_* maps):
+-- Six roles across two departments plus the cross-department GM Admin
+-- (kept in sync with the app's ROLE_* maps):
 --   Housekeeping: hk_staff | hk_supervisor | hk_manager
 --   Front Desk:   fo_staff | fo_supervisor | fo_manager
+--   Cross-dept:   gm_admin
 -- This script is re-runnable over the old 3-role table. ORDER MATTERS: drop the
 -- old check, re-map legacy roles, then add the new check — adding the check
 -- before the re-map would fail (23514) while rows still hold legacy values.
@@ -30,7 +32,7 @@ update public.staff set role = 'hk_manager'    where role = 'manager';
 -- update public.staff set role = 'fo_manager' where role = 'manager';
 
 alter table public.staff add constraint staff_role_check
-  check (role in ('hk_staff','hk_supervisor','hk_manager','fo_staff','fo_supervisor','fo_manager'));
+  check (role in ('hk_staff','hk_supervisor','hk_manager','fo_staff','fo_supervisor','fo_manager','gm_admin'));
 
 -- Trim whitespace from role/full_name before writing (a BEFORE trigger runs
 -- before the CHECK constraint, so hand-typed values like 'hk_manager ' with a
@@ -94,10 +96,13 @@ create policy "staff self read"
 
 -- Managers can read ONLY their own department's staff rows (strictly
 -- departmental). `role like 'hk\_%'` / `'fo\_%'` matches the role prefix.
+-- gm_admin is the cross-department admin and reads every row.
 create policy "manager read own dept"
   on public.staff for select
   to authenticated
   using (
+    public.my_staff_role() = 'gm_admin'
+    or
     (public.my_staff_role() = 'hk_manager' and role like 'hk\_%')
     or
     (public.my_staff_role() = 'fo_manager' and role like 'fo\_%')
@@ -107,15 +112,30 @@ create policy "manager read own dept"
 -- WITH CHECK evaluates the resulting row (new role for insert/update), so a
 -- manager can't move a row into the other department; excluding their own email
 -- prevents a self-demotion/self-disable lockout via a direct API call.
+-- gm_admin is the cross-department admin: it may write any row (including its
+-- own email), and only it can create/assign gm_admin rows.
 create policy "manager write own dept"
   on public.staff for all
   to authenticated
   using (
+    public.my_staff_role() = 'gm_admin'
+    or
     (public.my_staff_role() = 'hk_manager' and role like 'hk\_%')
     or
     (public.my_staff_role() = 'fo_manager' and role like 'fo\_%')
   )
-  with check ( email <> auth.jwt() ->> 'email' );
+  with check (
+    public.my_staff_role() = 'gm_admin'
+    or
+    (
+      (
+        (public.my_staff_role() = 'hk_manager' and role like 'hk\_%')
+        or
+        (public.my_staff_role() = 'fo_manager' and role like 'fo\_%')
+      )
+      and email <> auth.jwt() ->> 'email'
+    )
+  );
 
 -- ============================================================================
 -- 2. daily_reports
@@ -159,7 +179,7 @@ create policy "auth insert daily"
   on public.daily_reports for insert
   to authenticated
   with check ( public.my_staff_role() in
-    ('hk_staff','hk_supervisor','hk_manager','fo_staff','fo_supervisor','fo_manager') );
+    ('hk_staff','hk_supervisor','hk_manager','fo_staff','fo_supervisor','fo_manager','gm_admin') );
 
 -- Option A from roles-implementation-plan.md: a single permissive update policy.
 -- RLS cannot restrict writes to individual jsonb keys inside `payload`, so

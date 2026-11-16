@@ -3,9 +3,13 @@
 -- (Authentication > Users > Add user). Until a row exists in auth.users for
 -- a given email, that person cannot sign in.
 --
--- Roles are one of six values across two departments:
+-- Roles are one of seven values: six departmental roles across two
+-- departments, plus the cross-department GM Admin:
 --   Housekeeping: hk_staff | hk_supervisor | hk_manager
 --   Front Desk:   fo_staff | fo_supervisor | fo_manager
+--   Cross-dept:   gm_admin (manages staff in EVERY department; no
+--                 operational Setup/Checklist/Extra tabs, cannot sign
+--                 confirmations)
 -- Roles are NOT changeable from the app — edit them in the Supabase
 -- Dashboard (Table Editor > staff > role) or via SQL. See migration
 -- 002_role_based_access.sql for mapping old 3-role rows to the new set.
@@ -44,6 +48,12 @@ insert into public.staff (email, full_name, role, active)
 -- Add line staff the same way, e.g.:
 --   insert into public.staff (email, full_name, role, active)
 --     values ('hk1@corinthia-tripoli.com', 'Housekeeping Staff', 'hk_staff', true);
+--
+-- GM Admin accounts are created manually (auth user first, then a staff row):
+--   insert into public.staff (email, full_name, role, active)
+--     values ('gm@corinthia-tripoli.com', 'General Manager', 'gm_admin', true);
+-- (The app's staff form only offers departmental roles — a gm_admin login has
+-- to be bootstrapped here or in the Supabase dashboard.)
 
 -- Soft-disable someone (keeps history attribution intact):
 --   update public.staff set active = false where email = 'someone@x.com';
