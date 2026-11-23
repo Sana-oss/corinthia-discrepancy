@@ -172,6 +172,27 @@ Also verified: per-event detail (actor snapshot, role, department, action, recor
 
 ---
 
+## 3d. P2 verification (separate milestone)
+
+Migration `010_p2_audit_capture.sql` extends the **same** `audit_daily_report_changes()` trigger (009 is untouched). It adds `room_list_imported`, `extra_room_added`, `extra_room_removed` and the six shared lifecycle actions. No new table, no RLS/grant change, no backfill.
+
+| Check | Result |
+|---|---|
+| Combined import (add 1, remove 2, reset 1, stay-change 1, clear 1 confirmation, add 1 extra) | exactly 2 rows: one import with full detail arrays/counts, one extra add; zero per-room status rows |
+| Aggregate arrays | `added/removed/reset/changed_stay` lists hold real room IDs and before/after values; `affected_room_count = 4` (union) |
+| Identical re-upload (only `list_uploaded_at` changes) | **0** new rows |
+| Large import (60 rooms reset + 60 stay changes) | 3 bounded continuation parts, one `operation_id`, counts only on part 1, 50 entries max per row, 120 total details, no loss |
+| Extras add (2) / remove (1) / no-op | exactly 3 rows, correct entities; no-op emitted 0 |
+| Lifecycle chain + reversals | `submitted → received → signed → signature_undone → receive_undone → recalled` — 6 rows, 0 fallbacks, correct actors and `shared_report` visibility |
+| Failed write (update then forced rollback) | 0 rows persisted; synthetic reports also rolled back |
+| RLS — six temporary accounts | HK staff 1 own; HK supervisor 3 (own dept); HK manager 5 (HK dept + 3 shared); FD staff 1 own; FD manager 4 (FD dept + 3 shared); GM 6. HK manager saw **0** FD department rows; FD manager saw **0** HK department rows |
+| Browser regression | Checklist status clicks, extra add/remove, FD list import (2 continuation parts), HK submit, FD receive + confirm, History Reports, Activity, staff self-only view, manager Staff tab, password modal — all behaved as before |
+| Cleanup | temp accounts/rows and synthetic reports removed; day restored to 97 rooms with original status counts; `audit_rows = 0`; backup tables dropped |
+
+Note: migration 010 was applied, then a live probe revealed that aggregate `old_values`/`new_values` room-ID arrays used the wrong JSON path. The uncommitted migration was corrected in place and the function definition re-applied before any P2 commit; all affected probes were rolled back, so no incorrect audit row was ever persisted.
+
+---
+
 ## 4. Implementation status (final-report basis)
 
 | Requirement | Status | Evidence |
@@ -183,7 +204,7 @@ Also verified: per-event detail (actor snapshot, role, department, action, recor
 | Room Checklist transitions incl. cross-state, ON/OFF separate | **Implemented** | action table above; 8-step probe |
 | Read scope GM / manager / supervisor / staff | **Implemented** | §3b.A — all four branches exercised with temporary real identities (plus both departments); all counts matched. Test accounts and rows were removed |
 | Password-change audit | **Unimplemented** | P3; deliberately not done. No password/hash/token field exists in the table |
-| Room Management / extras / report lifecycle audit | **Unimplemented** | P2; no producer exists yet. `visibility='shared_report'` is provisioned and its read path was verified with a rolled-back synthetic row |
+| Room Management / extras / report lifecycle audit | **Implemented (P2)** | Migration `010_p2_audit_capture.sql`; §3d |
 | Staff management / reset audit | **Unimplemented** | P3 |
 | UI (History → `Reports | Activity`, filters, detail, RTL/mobile) | **Implemented in a later milestone** | See `docs/activity-ui.md` and §3c |
 | Offline intermediate-transition preservation | **Unimplemented** | Outbox still keeps only latest payload per date; see §6 |
