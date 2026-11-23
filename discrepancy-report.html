@@ -2710,12 +2710,14 @@
           // Preferred path: the create-staff Edge Function creates the login + the
           // staff row together, so the employee can sign in immediately.
           try {
-            await sbStaffLogin({ action: 'create', email, full_name: name, role, active, password });
+            const loginResult = await sbStaffLogin({ action: 'create', email, full_name: name, role, active, password });
+            const auditWarn = (loginResult && loginResult.audit_recorded === false)
+              ? ' Audit record could not be saved — contact IT.' : '';
             closeStaffForm();
             await loadStaffList();
-            hint.textContent = 'Employee added with a login. Give them their email and the password you set — they can sign in right away.';
+            hint.textContent = 'Employee added with a login. Give them their email and the password you set — they can sign in right away.' + auditWarn;
             hint.style.display = '';
-            showToast('Staff added — login created');
+            showToast('Staff added — login created' + auditWarn);
             return;
           } catch (e) {
             if (!e.notDeployed) {
@@ -2764,8 +2766,10 @@
         }
         if (password) {
           try {
-            await sbStaffLogin({ action: 'reset', email, password });
-            showToast('Staff saved — password updated');
+            const resetResult = await sbStaffLogin({ action: 'reset', email, password });
+            const auditWarn = (resetResult && resetResult.audit_recorded === false)
+              ? ' Audit record could not be saved — contact IT.' : '';
+            showToast('Staff saved — password updated' + auditWarn);
           } catch (e) {
             showToast(e.notDeployed
               ? 'Profile saved — password not changed (login service not deployed)'
@@ -4109,7 +4113,11 @@
             errEl.textContent = body.error || 'Could not change the password — try again.';
           } else {
             closeChangePwdModal();
-            showToast(body.message || 'Password changed');
+            if (body.audit_recorded === false) {
+              showToast('Password changed, but the audit record could not be saved — contact IT.');
+            } else {
+              showToast(body.message || 'Password changed');
+            }
           }
         } catch (e) {
           console.error(e);

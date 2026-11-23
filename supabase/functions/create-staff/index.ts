@@ -35,6 +35,53 @@ const json = (body: unknown, status = 200) =>
     headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
   });
 
+// P3 Batch A: append-only audit row for auth-level operations. The audit insert
+// cannot share a transaction with GoTrue, so we retry and only ever report
+// audit_recorded: true after the database confirms the insert.
+type AuditEntry = {
+  actor_user_id: string;
+  actor_email: string;
+  actor_name: string | null;
+  actor_role: string | null;
+  actor_department: string | null;
+  department: string | null;
+  visibility: "staff_admin";
+  module: "staff";
+  action_type: string;
+  entity_type: "staff";
+  entity_id: string;
+  entity_label: string;
+  old_values: unknown;
+  new_values: unknown;
+  description: string;
+  source: "edge_function";
+  metadata: Record<string, unknown>;
+};
+
+async function insertAuditEntry(
+  admin: ReturnType<typeof createClient>,
+  entry: AuditEntry,
+): Promise<{ recorded: boolean; errorCode?: string }> {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const { error } = await admin.from("system_audit_logs").insert(entry);
+    if (!error) return { recorded: true };
+    if (attempt < 3) continue;
+    // Operational alert: non-sensitive correlation data only. Never log the
+    // request body, passwords, hashes or tokens.
+    console.error(JSON.stringify({
+      level: "alert",
+      alert: "audit_insert_failed",
+      action_type: entry.action_type,
+      actor_email: entry.actor_email,
+      target_email: entry.entity_id,
+      error_code: error.code ?? "unknown",
+      attempt,
+    }));
+    return { recorded: false, errorCode: error.code ?? "unknown" };
+  }
+  return { recorded: false };
+}
+
 const ROLES = [
   "hk_staff", "hk_supervisor", "hk_manager",
   "fo_staff", "fo_supervisor", "fo_manager",
@@ -47,6 +94,13 @@ function callerDept(role: string): string {
   return role === "hk_manager" || role === "fo_manager"
     ? role.slice(0, 3) // "hk_" or "fo_"
     : "gm"; // gm_admin manages every department
+}
+
+function auditDepartment(role: string): string | null {
+  if (role.startsWith("hk_")) return "hk";
+  if (role.startsWith("fo_")) return "fo";
+  if (role === "gm_admin") return "all";
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -81,7 +135,7 @@ Deno.serve(async (req) => {
     const callerEmail = meData.user.email.toLowerCase();
 
     const { data: callerRow, error: callerErr } = await admin
-      .from("staff").select("role, active").eq("email", callerEmail).maybeSingle();
+      .from("staff").select("role, active, full_name").eq("email", callerEmail).maybeSingle();
     if (callerErr || !callerRow) return json({ error: "You are not on the staff list." }, 403);
     if (callerRow.active === false) return json({ error: "Your account is disabled." }, 403);
     if (callerRow.role !== "hk_manager" && callerRow.role !== "fo_manager" && callerRow.role !== "gm_admin") {
@@ -119,7 +173,7 @@ Deno.serve(async (req) => {
       }
 
       // --- 3a. Create the login (confirmed, so they can sign in right away). ---
-      const { error: createErr } = await admin.auth.admin.createUser({
+      const { data: createdUser, error: createErr } = await admin.auth.admin.createUser({
         email,
         password,
         email_confirm: true,
@@ -140,7 +194,40 @@ Deno.serve(async (req) => {
       if (staffErr) {
         return json({ error: "Login created, but saving the staff row failed: " + staffErr.message }, 500);
       }
-      return json({ ok: true, message: "Login created — share the email and password with the employee." });
+
+      const audit = await insertAuditEntry(admin, {
+        actor_user_id: meData.user.id,
+        actor_email: callerEmail,
+        actor_name: callerRow.full_name ?? null,
+        actor_role: callerRow.role,
+        actor_department: auditDepartment(callerRow.role),
+        department: auditDepartment(role),
+        visibility: "staff_admin",
+        module: "staff",
+        action_type: "staff_created",
+        entity_type: "staff",
+        entity_id: email,
+        entity_label: fullName,
+        old_values: null,
+        new_values: { full_name: fullName, role, active: body.active !== false },
+        description: `Staff created: ${fullName} (${role})`,
+        source: "edge_function",
+        metadata: {
+          target_email: email,
+          target_full_name: fullName,
+          target_role: role,
+          target_department: auditDepartment(role),
+          target_user_id: createdUser?.user?.id ?? null,
+          login_created: true,
+          password_material_logged: false,
+        },
+      });
+      return json({
+        ok: true,
+        message: "Login created — share the email and password with the employee.",
+        audit_recorded: audit.recorded,
+        ...(audit.errorCode ? { audit_error_code: audit.errorCode } : {}),
+      });
     }
 
     // --- action === "reset": set a new password for an existing login. ---
@@ -161,7 +248,7 @@ Deno.serve(async (req) => {
     // would let one department's manager reset another department's account).
     // The caller may only reset rows in their own department; gm_admin any.
     const { data: targetRow } = await admin
-      .from("staff").select("role").eq("email", email).maybeSingle();
+      .from("staff").select("role, full_name").eq("email", email).maybeSingle();
     if (!targetRow?.role) {
       return json({ error: "No staff record exists for that email — add the employee first." }, 404);
     }
@@ -171,7 +258,40 @@ Deno.serve(async (req) => {
 
     const { error: updErr } = await admin.auth.admin.updateUserById(target.id, { password });
     if (updErr) return json({ error: "Could not set the password: " + updErr.message }, 400);
-    return json({ ok: true, message: "Password updated — share the new password with the employee." });
+
+    const audit = await insertAuditEntry(admin, {
+      actor_user_id: meData.user.id,
+      actor_email: callerEmail,
+      actor_name: callerRow.full_name ?? null,
+      actor_role: callerRow.role,
+      actor_department: auditDepartment(callerRow.role),
+      department: auditDepartment(targetRow.role),
+      visibility: "staff_admin",
+      module: "staff",
+      action_type: "staff_password_reset",
+      entity_type: "staff",
+      entity_id: email,
+      entity_label: targetRow.full_name ?? email,
+      old_values: null,
+      new_values: null,
+      description: `Password reset for ${email}`,
+      source: "edge_function",
+      metadata: {
+        target_email: email,
+        target_full_name: targetRow.full_name ?? null,
+        target_role: targetRow.role,
+        target_department: auditDepartment(targetRow.role),
+        target_user_id: target.id,
+        self_service: false,
+        password_material_logged: false,
+      },
+    });
+    return json({
+      ok: true,
+      message: "Password updated — share the new password with the employee.",
+      audit_recorded: audit.recorded,
+      ...(audit.errorCode ? { audit_error_code: audit.errorCode } : {}),
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return json({ error: "Unexpected error: " + msg }, 500);

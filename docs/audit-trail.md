@@ -193,6 +193,29 @@ Note: migration 010 was applied, then a live probe revealed that aggregate `old_
 
 ---
 
+## 3e. P3 Batch A verification (staff / password audit)
+
+Migration `011_p3_staff_audit.sql` extends the single audit table with `visibility='staff_admin'`, tightens the read policy (supervisors no longer receive any row whose visibility is not `department`), removes DELETE/TRUNCATE grants on `staff` from `anon`/`authenticated`, splits the broad `FOR ALL` staff policy into INSERT/UPDATE policies, and adds an AFTER INSERT/UPDATE/DELETE trigger on `staff`. Edge Functions `create-staff` and `change-password` now append actor-attributed audit rows and return an explicit `audit_recorded` result.
+
+| Check | Result |
+|---|---|
+| Direct DELETE / TRUNCATE on staff as `authenticated` or `anon` | denied (42501) |
+| Manager INSERT of other-department role; self-demotion UPDATE | denied by RLS; other department row unaffected |
+| Staff lifecycle | `staff_created` → `staff_updated` → `staff_active_changed` (deactivate / reactivate); no-op UPDATE = 0 rows; exactly one event per operation |
+| Service-role INSERT/UPDATE | 0 rows (suppressed to avoid duplicate Edge Function event) |
+| Exceptional service-role DELETE | one `staff_deleted` with `identity_unresolved=true` |
+| Actor vs target | manager events keep actor = manager, target = affected employee; self-change actor = target |
+| RLS with seven temporary identities | GM 3; HK manager 2 (HK only); FD manager 1 (FD only); HK/FD supervisors 0; HK staff only own self event; FD staff 0 |
+| P1/P2 regression | department-scoped room event still visible to HK supervisor (1) and HK manager (1), invisible to FD supervisor (0) |
+| Edge Functions | manager create, manager reset, self password change all `audit_recorded:true` with correct actor/target; cross-department reset 403; wrong current password 401; no credential material in any event |
+| Audit failure simulation | with service-role INSERT temporarily revoked, password change returned `ok:true, audit_recorded:false, audit_error_code:42501`; no audit row; grant restored immediately; alert payload verified statically |
+| Browser regression | Staff add/edit/deactivate/reactivate, password modal, Activity view — all produced exactly one correct event and displayed the new audit records |
+| Cleanup | temp accounts/staff and all test audit rows removed; `audit_rows=0`; `temp_staff=0`; `temp_users=0` |
+
+Note: migration 011 was applied, then a live probe exposed two defects in the uncommitted migration (an unassigned PL/pgSQL record and an unreliable `session_user` suppression guard). Both were corrected in place and the function definition re-applied before any P3 commit; all affected probes were rolled back, so no incorrect audit row was persisted.
+
+---
+
 ## 4. Implementation status (final-report basis)
 
 | Requirement | Status | Evidence |
@@ -203,15 +226,15 @@ Note: migration 010 was applied, then a live probe revealed that aggregate `old_
 | One row per changed entity/transition, no retries duplicates | **Implemented (P1 path)** | diff on persisted payload; immutable identity key; 8/8, 0/0 counts |
 | Room Checklist transitions incl. cross-state, ON/OFF separate | **Implemented** | action table above; 8-step probe |
 | Read scope GM / manager / supervisor / staff | **Implemented** | §3b.A — all four branches exercised with temporary real identities (plus both departments); all counts matched. Test accounts and rows were removed |
-| Password-change audit | **Unimplemented** | P3; deliberately not done. No password/hash/token field exists in the table |
+| Password-change audit | **Implemented (P3 Batch A)** | `staff_password_reset`, `staff_password_changed_self`; §3e |
 | Room Management / extras / report lifecycle audit | **Implemented (P2)** | Migration `010_p2_audit_capture.sql`; §3d |
-| Staff management / reset audit | **Unimplemented** | P3 |
+| Staff management / reset audit | **Implemented (P3 Batch A)** | migration `011_p3_staff_audit.sql`; §3e |
 | UI (History → `Reports | Activity`, filters, detail, RTL/mobile) | **Implemented in a later milestone** | See `docs/activity-ui.md` and §3c |
 | Offline intermediate-transition preservation | **Unimplemented** | Outbox still keeps only latest payload per date; see §6 |
 | Historical baseline backfill | **Not applicable (rejected)** | No marker/backfill rows; coverage starts at deployment |
 | Export logging (copy email / print) | **Out of scope** | Per owner decision |
 
-**P1 classification at that milestone was: database/backend implemented.** The Activity UI has since been delivered as a separate milestone (see `docs/activity-ui.md` and §3c). P2, P3 and the offline event queue remain unimplemented.
+**P1 classification at that milestone was: database/backend implemented.** The Activity UI, P2, and P3 Batch A have since been delivered as separate milestones (§3c–§3e). P3 Batch B (`report_created`) and the offline event queue remain unimplemented.
 
 ---
 

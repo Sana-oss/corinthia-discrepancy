@@ -42,6 +42,38 @@ const json = (body: unknown, status = 200) =>
     headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
   });
 
+function auditDepartment(role: string): string | null {
+  if (role.startsWith("hk_")) return "hk";
+  if (role.startsWith("fo_")) return "fo";
+  if (role === "gm_admin") return "all";
+  return null;
+}
+
+// P3 Batch A: the password write and the audit insert cannot share a
+// transaction. Retry, then report audit_recorded explicitly — never claim an
+// audit row was stored unless the database confirmed it.
+async function insertPasswordAudit(
+  admin: ReturnType<typeof createClient>,
+  entry: Record<string, unknown>,
+): Promise<{ recorded: boolean; errorCode?: string }> {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const { error } = await admin.from("system_audit_logs").insert(entry);
+    if (!error) return { recorded: true };
+    if (attempt < 3) continue;
+    console.error(JSON.stringify({
+      level: "alert",
+      alert: "audit_insert_failed",
+      action_type: entry.action_type,
+      actor_email: entry.actor_email,
+      target_email: entry.entity_id,
+      error_code: error.code ?? "unknown",
+      attempt,
+    }));
+    return { recorded: false, errorCode: error.code ?? "unknown" };
+  }
+  return { recorded: false };
+}
+
 // Matches the minimum length the create-staff manager flow already enforces,
 // so a manager-issued initial password can always be kept or replaced.
 const MIN_PASSWORD_LENGTH = 6;
@@ -121,7 +153,42 @@ Deno.serve(async (req) => {
       return json({ error: "Could not change the password: " + (updErr.message || "unknown error") }, 400);
     }
 
-    return json({ ok: true, message: "Password changed — your new password is active." });
+    const { data: staffRow } = await admin
+      .from("staff").select("full_name, role").eq("email", callerEmail).maybeSingle();
+    const targetRole = staffRow?.role ?? null;
+    const audit = await insertPasswordAudit(admin, {
+      actor_user_id: callerId,
+      actor_email: callerEmail,
+      actor_name: staffRow?.full_name ?? null,
+      actor_role: targetRole,
+      actor_department: targetRole ? auditDepartment(targetRole) : null,
+      department: targetRole ? auditDepartment(targetRole) : null,
+      visibility: "staff_admin",
+      module: "staff",
+      action_type: "staff_password_changed_self",
+      entity_type: "staff",
+      entity_id: callerEmail,
+      entity_label: staffRow?.full_name ?? callerEmail,
+      old_values: null,
+      new_values: null,
+      description: "Self-service password change",
+      source: "edge_function",
+      metadata: {
+        target_email: callerEmail,
+        target_full_name: staffRow?.full_name ?? null,
+        target_role: targetRole,
+        target_department: targetRole ? auditDepartment(targetRole) : null,
+        target_user_id: callerId,
+        self_service: true,
+        password_material_logged: false,
+      },
+    });
+    return json({
+      ok: true,
+      message: "Password changed — your new password is active.",
+      audit_recorded: audit.recorded,
+      ...(audit.errorCode ? { audit_error_code: audit.errorCode } : {}),
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return json({ error: "Unexpected error: " + msg }, 500);
