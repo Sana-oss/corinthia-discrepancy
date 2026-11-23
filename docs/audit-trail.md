@@ -153,6 +153,25 @@ With `visibility='shared_report'` provisioned in the schema, both the HK manager
 
 ---
 
+## 3c. Activity UI verification (separate milestone)
+
+`docs/activity-ui.md` records the delivered UI. It reads only `system_audit_logs`; no separate audit store exists. Row visibility is enforced by the RLS policy from P1 — the frontend filters only narrow the already-authorized result set.
+
+Verified in the deployed app code path (local build of the same HTML, real Supabase auth) with six temporary employees and real Room Checklist events on a synthetic room:
+
+| Viewer | Events visible | Expected |
+|---|---|---|
+| HK staff | 3 — own actions only; Reports segment hidden | own only |
+| FD staff | 1 — own action only; Reports segment hidden | own only |
+| HK supervisor | 4 — all HK rows incl. another employee, no shared/FD | own department, read-only |
+| HK manager | 5 — 4 HK + 1 shared handoff, no FD department row | own dept + shared |
+| FD manager | 2 — 1 FD + 1 shared handoff, no HK rows | own dept + shared |
+| GM | 6 — all rows | all |
+
+Also verified: per-event detail (actor snapshot, role, department, action, record, old→new, `unset_flags`, module, source, server timestamp with "not recorded" original time), room/record search respecting RLS, coverage banner, staff-only notice, existing Reports tab still available to supervisors/managers, Summary still read-only for staff, and the change-password modal still works. All temporary accounts/rows were removed and the day restored (97 rooms, test room absent, `audit_rows = 0`).
+
+---
+
 ## 4. Implementation status (final-report basis)
 
 | Requirement | Status | Evidence |
@@ -166,12 +185,12 @@ With `visibility='shared_report'` provisioned in the schema, both the HK manager
 | Password-change audit | **Unimplemented** | P3; deliberately not done. No password/hash/token field exists in the table |
 | Room Management / extras / report lifecycle audit | **Unimplemented** | P2; no producer exists yet. `visibility='shared_report'` is provisioned and its read path was verified with a rolled-back synthetic row |
 | Staff management / reset audit | **Unimplemented** | P3 |
-| UI (History → `Reports | Activity`, filters, detail, RTL/mobile) | **Unimplemented** | No HTML changes made in P1 |
+| UI (History → `Reports | Activity`, filters, detail, RTL/mobile) | **Implemented in a later milestone** | See `docs/activity-ui.md` and §3c |
 | Offline intermediate-transition preservation | **Unimplemented** | Outbox still keeps only latest payload per date; see §6 |
 | Historical baseline backfill | **Not applicable (rejected)** | No marker/backfill rows; coverage starts at deployment |
 | Export logging (copy email / print) | **Out of scope** | Per owner decision |
 
-**P1 classification remains: database/backend implemented.** The user-facing audit feature is **not** finished — the Activity UI does not exist yet. No UI, P2, or P3 work was performed in this verification step.
+**P1 classification at that milestone was: database/backend implemented.** The Activity UI has since been delivered as a separate milestone (see `docs/activity-ui.md` and §3c). P2, P3 and the offline event queue remain unimplemented.
 
 ---
 

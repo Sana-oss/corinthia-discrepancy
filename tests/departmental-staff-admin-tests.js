@@ -89,17 +89,20 @@ vm.runInContext(rolesBlock, sandbox);
 // vm.Function boundaries: expose helpers for the tests
 vm.runInContext(`
   function __access(tab) { return tabAccess(tab); }
+  function __canSeeReports() { return canSeeHistoryReports(); }
   function __canManage(role) { return canManageRole(role); }
   function __canConfirm(side) { return canConfirm(side); }
 `, sandbox);
 
 const ALL_TABS = ['setup', 'checklist', 'extra', 'summary', 'history', 'staff'];
-// Expected tabAccess per role, straight from roles-implementation-plan.md.
+// Expected tabAccess per role. History is now reachable by every role, but
+// its Reports section stays restricted (canSeeHistoryReports) — staff get
+// only the Activity section. No other tab access changed.
 const EXPECTED_MATRIX = {
-  hk_staff:     { setup: 'hidden', checklist: 'full', extra: 'full', summary: 'view',  history: 'hidden', staff: 'hidden' },
+  hk_staff:     { setup: 'hidden', checklist: 'full', extra: 'full', summary: 'view',  history: 'full',   staff: 'hidden' },
   hk_supervisor:{ setup: 'hidden', checklist: 'full', extra: 'full', summary: 'full',  history: 'full',   staff: 'hidden' },
   hk_manager:   { setup: 'hidden', checklist: 'full', extra: 'full', summary: 'full',  history: 'full',   staff: 'full'   },
-  fo_staff:     { setup: 'full',   checklist: 'hidden', extra: 'hidden', summary: 'view', history: 'hidden', staff: 'hidden' },
+  fo_staff:     { setup: 'full',   checklist: 'hidden', extra: 'hidden', summary: 'view', history: 'full',   staff: 'hidden' },
   fo_supervisor:{ setup: 'full',   checklist: 'hidden', extra: 'hidden', summary: 'full', history: 'full',   staff: 'hidden' },
   fo_manager:   { setup: 'full',   checklist: 'hidden', extra: 'hidden', summary: 'full', history: 'full',   staff: 'full'   },
   gm_admin:     { setup: 'hidden', checklist: 'hidden', extra: 'hidden', summary: 'full', history: 'full',   staff: 'full'   }
@@ -116,6 +119,22 @@ test('REAL tabAccess matrix matches the plan for all seven roles', () => {
       );
     }
   }
+});
+
+test('History Reports section stays restricted while Activity is available to staff', () => {
+  ['hk_staff', 'fo_staff'].forEach(role => {
+    sandbox.me = { role };
+    assert.strictEqual(sandbox.__access('history'), 'full', `${role} must reach History → Activity`);
+    assert.strictEqual(sandbox.__canSeeReports(), false, `${role} must NOT see History → Reports`);
+  });
+  ['hk_supervisor', 'hk_manager', 'fo_supervisor', 'fo_manager', 'gm_admin'].forEach(role => {
+    sandbox.me = { role };
+    assert.strictEqual(sandbox.__canSeeReports(), true, `${role} keeps Reports access`);
+  });
+  // Staff must not gain any other newly restricted interface.
+  sandbox.me = { role: 'hk_staff' };
+  assert.strictEqual(sandbox.__access('staff'), 'hidden');
+  assert.strictEqual(sandbox.__access('setup'), 'hidden');
 });
 
 test('Front Office Manager can manage ONLY Front Desk roles (canManageRole)', () => {

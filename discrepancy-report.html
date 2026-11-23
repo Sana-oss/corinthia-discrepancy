@@ -1191,6 +1191,178 @@
 
 
     /* --- Print (monochrome for paper, brand fonts) --- */
+    /* --- History: Reports | Activity + audit view --- */
+    .history-segments {
+      display: flex;
+      gap: 0;
+      border-block-end: 1px solid var(--line);
+      margin-block-end: 16px;
+    }
+
+    .seg-btn {
+      flex: 1;
+      padding: 11px 8px;
+      border: 0;
+      border-block-end: 2px solid transparent;
+      background: transparent;
+      color: var(--ink-soft);
+      font-family: var(--font-body);
+      font-size: 12px;
+      letter-spacing: .8px;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+
+    .seg-btn:hover {
+      color: var(--ink);
+    }
+
+    .seg-btn.active {
+      color: var(--ink);
+      border-block-end-color: var(--ink);
+      font-weight: 500;
+    }
+
+    .activity-coverage {
+      background: var(--bg-soft);
+      border: 1px solid var(--line);
+      padding: 10px 12px;
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--ink-soft);
+      margin-block-end: 12px;
+    }
+
+    .activity-filters {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      padding: 10px 12px;
+      margin-block-end: 14px;
+    }
+
+    .activity-filters summary {
+      cursor: pointer;
+      font-size: 12px;
+      letter-spacing: .6px;
+      text-transform: uppercase;
+      color: var(--ink);
+    }
+
+    .activity-filter-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 10px;
+      margin-block-start: 12px;
+    }
+
+    .activity-filter-grid label {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      font-size: 11px;
+      letter-spacing: .4px;
+      color: var(--ink-soft);
+    }
+
+    .activity-filter-grid input,
+    .activity-filter-grid select {
+      width: 100%;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--bg-soft);
+      color: var(--ink);
+      font-family: var(--font-body);
+      font-size: 13px;
+    }
+
+    .activity-item {
+      padding-block: 14px;
+    }
+
+    .activity-item .a-head,
+    .activity-item .a-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 12px;
+      align-items: baseline;
+    }
+
+    .activity-item .a-action {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--ink);
+      text-align: start;
+    }
+
+    .activity-item .a-when {
+      font-size: 11px;
+      color: var(--ink-soft);
+      font-family: var(--font-mono);
+    }
+
+    .activity-item .a-who {
+      font-size: 12px;
+      color: var(--ink);
+    }
+
+    .activity-item .a-role {
+      font-size: 11px;
+      color: var(--ink-soft);
+    }
+
+    .activity-item .a-line {
+      font-size: 12px;
+      color: var(--ink-soft);
+      margin-block-start: 6px;
+      line-height: 1.6;
+      overflow-wrap: anywhere;
+    }
+
+    .activity-item .a-tag {
+      display: inline-block;
+      padding: 2px 7px;
+      border: 1px solid var(--line);
+      background: var(--bg-soft);
+      font-size: 10px;
+      letter-spacing: .5px;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+    }
+
+    .activity-detail .activity-kv {
+      display: grid;
+      grid-template-columns: minmax(110px, auto) minmax(0, 1fr);
+      gap: 7px 14px;
+      margin-block: 10px 18px;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .activity-detail .activity-kv dt {
+      color: var(--ink-soft);
+      letter-spacing: .4px;
+    }
+
+    .activity-detail .activity-kv dd {
+      margin: 0;
+      color: var(--ink);
+      overflow-wrap: anywhere;
+    }
+
+    .activity-detail pre {
+      margin: 0;
+      padding: 10px;
+      background: var(--bg-soft);
+      border: 1px solid var(--line);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      direction: ltr;
+      text-align: start;
+    }
+
     @media print {
       @page {
         margin: 14mm;
@@ -1479,17 +1651,79 @@
 
       <!-- HISTORY TAB -->
       <section id="tab-history" class="hidden">
-        <div id="historyList">
-          <p class="panel-label">Past days' reports — every day is kept automatically.</p>
-          <ul class="ledger" id="historyListItems">
-            <div class="empty">Loading…</div>
-          </ul>
+        <div class="history-segments" role="tablist" aria-label="History sections">
+          <button type="button" id="historySegmentReports" class="seg-btn active" data-segment="reports"
+            role="tab" aria-selected="true">Reports</button>
+          <button type="button" id="historySegmentActivity" class="seg-btn" data-segment="activity"
+            role="tab" aria-selected="false">Activity</button>
         </div>
-        <div id="historyDetail" class="hidden">
-          <button class="btn-secondary" id="historyBackBtn" style="margin-bottom:14px;">&larr; Back to list</button>
-          <div id="historyDetailBody"></div>
-          <button class="btn-secondary" id="historyPrintBtn" style="width:100%;margin-top:16px;">Print this
-            report</button>
+
+        <div id="historyReports">
+          <div id="historyList">
+            <p class="panel-label">Past days' reports — every day is kept automatically.</p>
+            <ul class="ledger" id="historyListItems">
+              <div class="empty">Loading…</div>
+            </ul>
+          </div>
+          <div id="historyDetail" class="hidden">
+            <button class="btn-secondary" id="historyBackBtn" style="margin-bottom:14px;">&larr; Back to list</button>
+            <div id="historyDetailBody"></div>
+            <button class="btn-secondary" id="historyPrintBtn" style="width:100%;margin-top:16px;">Print this
+              report</button>
+          </div>
+        </div>
+
+        <div id="historyActivity" class="hidden">
+          <div id="activityCoverage" class="activity-coverage" aria-live="polite"></div>
+          <p class="panel-label" id="activityScopeNote">
+            You can see only your own recorded actions.
+          </p>
+          <details id="activityFiltersWrap" class="activity-filters">
+            <summary>Filters &amp; search</summary>
+            <div class="activity-filter-grid">
+              <label id="activityEmployeeLabel">Employee
+                <select id="activityEmployeeFilter"><option value="">All employees</option></select>
+              </label>
+              <label id="activityDepartmentLabel">Department
+                <select id="activityDepartmentFilter">
+                  <option value="">All authorized</option>
+                  <option value="hk">Housekeeping</option>
+                  <option value="fo">Front Office</option>
+                  <option value="all">GM / cross-department</option>
+                  <option value="shared">Shared report events</option>
+                </select>
+              </label>
+              <label id="activityRoleLabel">Role
+                <select id="activityRoleFilter"><option value="">All roles</option></select>
+              </label>
+              <label>Module
+                <select id="activityModuleFilter"><option value="">All modules</option></select>
+              </label>
+              <label>Action
+                <select id="activityActionFilter"><option value="">All actions</option></select>
+              </label>
+              <label>From (UTC)
+                <input type="date" id="activityDateFrom">
+              </label>
+              <label>To (UTC)
+                <input type="date" id="activityDateTo">
+              </label>
+              <label>Room / record search
+                <input type="search" id="activitySearch" placeholder="e.g. 1069 or 2026-11-23" autocomplete="off">
+              </label>
+            </div>
+            <button type="button" class="btn-secondary" id="activityResetBtn" style="margin-top:10px;">Reset
+              filters</button>
+          </details>
+          <div id="activityStatus" class="panel-label" aria-live="polite"></div>
+          <ul id="activityList" class="ledger activity-list"></ul>
+          <button type="button" class="btn-secondary" id="activityLoadMoreBtn" style="width:100%;margin-top:14px;"
+            hidden>Load more activity</button>
+          <div id="activityDetail" class="hidden">
+            <button type="button" class="btn-secondary" id="activityBackBtn" style="margin-bottom:14px;">Back to
+              activity</button>
+            <div id="activityDetailBody"></div>
+          </div>
         </div>
       </section>
 
@@ -1570,6 +1804,15 @@
       let savingNow = false;
       let historyRows = [];
       let historyViewing = null;
+      // --- Audit Activity (History tab) ---
+      const AUDIT_COVERAGE_START = '2026-11-23';
+      const ACTIVITY_PAGE_SIZE = 50;
+      let activityRows = [];
+      let activityOffset = 0;
+      let activityHasMore = false;
+      let activityLoading = false;
+      let activityViewing = null;
+      let activityOptions = { employees: [], departments: new Set(), roles: new Set(), modules: new Set(), actions: new Set() };
       let checklistFilter = '';
       let listUploadedAt = null;
 
@@ -1624,10 +1867,17 @@
           return dept === 'hk' ? 'full' : 'hidden';
         }
         if (tab === 'summary') return tier === 'staff' ? 'view' : 'full';
-        if (tab === 'history') return tier === 'staff' ? 'hidden' : 'full';
+        // History is available to every role, but ordinary staff only get the
+        // Activity section (their own actions) — never the Reports section.
+        // The section split is enforced by applyHistoryGating(), not here.
+        if (tab === 'history') return 'full';
         if (tab === 'staff') return tier === 'manager' ? 'full' : 'hidden';
         return 'hidden';
       }
+
+      // Reports (past daily reports) remain restricted to supervisors and
+      // managers. Ordinary staff get only the Activity section of History.
+      function canSeeHistoryReports() { return myTier() !== 'staff'; }
 
       // Sign-off (confirmation) is supervisor/manager only — never line staff.
       function canConfirm(side) {
@@ -2999,6 +3249,266 @@
         document.getElementById('historyDetail').classList.remove('hidden');
       }
 
+      // ============================================================
+      // Audit Activity (History tab) — reads ONLY system_audit_logs.
+      // Row visibility is enforced by Supabase RLS; nothing here tries
+      // to replace or weaken that authorization with frontend filtering.
+      // ============================================================
+      function applyHistoryGating() {
+        const staffOnly = !canSeeHistoryReports();
+        document.getElementById('historySegmentReports').classList.toggle('hidden', staffOnly);
+        document.getElementById('historyReports').classList.toggle('hidden', staffOnly);
+        document.getElementById('activityScopeNote').classList.toggle('hidden', !staffOnly);
+        // Per-viewer filter options: staff cannot filter by other people.
+        ['activityEmployeeLabel', 'activityDepartmentLabel', 'activityRoleLabel'].forEach(id => {
+          document.getElementById(id).classList.toggle('hidden', staffOnly);
+        });
+        const isGM = myRole() === 'gm_admin';
+        const isManager = myTier() === 'manager';
+        const deptSel = document.getElementById('activityDepartmentFilter');
+        const allOpt = deptSel.querySelector('option[value="all"]');
+        const sharedOpt = deptSel.querySelector('option[value="shared"]');
+        if (allOpt) allOpt.hidden = !isGM;
+        if (sharedOpt) sharedOpt.hidden = !isManager;
+        if (staffOnly) setHistorySegment('activity');
+      }
+
+      function setHistorySegment(which) {
+        if (which === 'reports' && !canSeeHistoryReports()) which = 'activity';
+        const reports = which === 'reports';
+        document.getElementById('historyReports').classList.toggle('hidden', !reports);
+        document.getElementById('historyActivity').classList.toggle('hidden', reports);
+        [['reports', 'historySegmentReports'], ['activity', 'historySegmentActivity']].forEach(([key, id]) => {
+          const btn = document.getElementById(id);
+          btn.classList.toggle('active', key === which);
+          btn.setAttribute('aria-selected', key === which ? 'true' : 'false');
+        });
+        if (!reports) loadActivity(true);
+      }
+
+      function formatAuditTime(value) {
+        if (!value) return 'Not recorded';
+        const d = new Date(value);
+        if (isNaN(d.getTime())) return escapeHtml(value);
+        try {
+          return new Intl.DateTimeFormat(document.documentElement.lang || undefined,
+            { dateStyle: 'medium', timeStyle: 'short', timeZoneName: 'short' }).format(d);
+        } catch (e) {
+          return d.toLocaleString();
+        }
+      }
+
+      function prettyAuditJson(value) {
+        try { return JSON.stringify(value, null, 2); } catch (e) { return String(value); }
+      }
+
+      function activityActionLabel(action) {
+        return String(action || 'event').replace(/_/g, ' ');
+      }
+
+      function activityFilterValues() {
+        return {
+          employee: document.getElementById('activityEmployeeFilter').value,
+          department: document.getElementById('activityDepartmentFilter').value,
+          role: document.getElementById('activityRoleFilter').value,
+          module: document.getElementById('activityModuleFilter').value,
+          action: document.getElementById('activityActionFilter').value,
+          from: document.getElementById('activityDateFrom').value,
+          to: document.getElementById('activityDateTo').value
+        };
+      }
+
+      function activitySearchTerm() {
+        const raw = (document.getElementById('activitySearch').value || '').trim();
+        // Rooms and report IDs are alphanumeric; stripping punctuation keeps
+        // the PostgREST .or() expression safe and predictable.
+        return raw.replace(/[^A-Za-z0-9\-]/g, '').slice(0, 40);
+      }
+
+      function buildActivityQuery() {
+        let q = sbClient().from('system_audit_logs').select('*');
+        const f = activityFilterValues();
+        if (f.employee) q = q.eq('actor_user_id', f.employee);
+        if (f.department === 'shared') q = q.eq('visibility', 'shared_report');
+        else if (f.department) q = q.eq('department', f.department);
+        if (f.role) q = q.eq('actor_role', f.role);
+        if (f.module) q = q.eq('module', f.module);
+        if (f.action) q = q.eq('action_type', f.action);
+        if (f.from) q = q.gte('occurred_at', f.from + 'T00:00:00Z');
+        if (f.to) q = q.lte('occurred_at', f.to + 'T23:59:59.999Z');
+        const s = activitySearchTerm();
+        if (s) {
+          q = q.or('entity_id.ilike.%' + s + '%,entity_label.ilike.%' + s
+            + '%,metadata->>room.ilike.%' + s + '%,metadata->>report_date.ilike.%' + s + '%');
+        }
+        return q;
+      }
+
+      function collectActivityOptions() {
+        const employees = new Map();
+        const modules = new Set();
+        const actions = new Set();
+        activityRows.forEach(r => {
+          if (r.actor_user_id) {
+            employees.set(r.actor_user_id,
+              (r.actor_name || r.actor_email || 'Unknown employee') + ' — ' + (r.actor_role || 'unknown role'));
+          }
+          if (r.module) modules.add(r.module);
+          if (r.action_type) actions.add(r.action_type);
+        });
+        activityOptions = {
+          employees: Array.from(employees, ([uid, label]) => ({ uid: uid, label: label }))
+            .sort((a, b) => a.label.localeCompare(b.label)),
+          modules: Array.from(modules).sort(),
+          actions: Array.from(actions).sort()
+        };
+      }
+
+      function fillActivitySelect(id, values, allLabel, labeller) {
+        const sel = document.getElementById(id);
+        const current = sel.value;
+        sel.innerHTML = '<option value="">' + allLabel + '</option>' + values.map(v => {
+          const val = typeof v === 'string' ? v : v.uid;
+          const label = typeof v === 'string' ? (labeller ? labeller(v) : v) : v.label;
+          return '<option value="' + escapeHtml(val) + '">' + escapeHtml(label) + '</option>';
+        }).join('');
+        sel.value = current;
+      }
+
+      function renderActivityOptions() {
+        fillActivitySelect('activityEmployeeFilter', activityOptions.employees, 'All employees');
+        fillActivitySelect('activityRoleFilter', Object.keys(ROLE_LABELS).sort((a, b) =>
+          ROLE_LABELS[a].localeCompare(ROLE_LABELS[b])), 'All roles', r => ROLE_LABELS[r]);
+        fillActivitySelect('activityModuleFilter', activityOptions.modules, 'All modules');
+        fillActivitySelect('activityActionFilter', activityOptions.actions, 'All actions', activityActionLabel);
+      }
+
+      function renderActivityRow(r) {
+        const meta = r.metadata || {};
+        const when = formatAuditTime(r.occurred_at);
+        const original = meta.client_occurred_at ? formatAuditTime(meta.client_occurred_at) : '';
+        const who = r.actor_name || r.actor_email || 'Unknown employee';
+        const role = r.actor_role ? (ROLE_LABELS[r.actor_role] || r.actor_role) : 'Unknown role';
+        const dept = r.actor_department || r.department || '';
+        const record = r.entity_label || r.entity_id || 'Record';
+        const change = (r.old_values || r.new_values)
+          ? prettyAuditJson(r.old_values) + ' → ' + prettyAuditJson(r.new_values) : '';
+        return '<li><div class="activity-item" data-action="viewActivity" data-id="' + escapeHtml(r.id)
+          + '" style="cursor:pointer;">'
+          + '<div class="a-head"><div class="a-action">' + escapeHtml(r.description || activityActionLabel(r.action_type)) + '</div>'
+          + '<div class="a-when">' + escapeHtml(when) + '</div></div>'
+          + '<div class="a-meta"><span class="a-who">' + escapeHtml(who) + '</span>'
+          + '<span class="a-role">' + escapeHtml(role) + (dept ? ' · ' + escapeHtml(dept) : '') + '</span></div>'
+          + '<div class="a-line"><span class="a-tag">' + escapeHtml(r.module) + '</span> '
+          + escapeHtml(record) + (meta.room ? ' · room ' + escapeHtml(meta.room) : '')
+          + (meta.report_date ? ' · report ' + escapeHtml(meta.report_date) : '') + '</div>'
+          + (change ? '<div class="a-line mono">' + escapeHtml(change) + '</div>' : '')
+          + (original ? '<div class="a-line">Original action time: ' + escapeHtml(original) + '</div>' : '')
+          + '</div></li>';
+      }
+
+      function renderActivityList() {
+        const wrap = document.getElementById('activityList');
+        wrap.innerHTML = activityRows.length
+          ? activityRows.map(renderActivityRow).join('')
+          : '<div class="empty">No activity is available for your access level yet.</div>';
+        document.getElementById('activityLoadMoreBtn').hidden = !activityHasMore;
+        const coverage = document.getElementById('activityCoverage');
+        let text = 'Audit coverage begins ' + formatAuditTime(AUDIT_COVERAGE_START + 'T00:00:00Z')
+          + '. Activity before this date was not captured.';
+        if (activityRows.length) {
+          const earliest = activityRows[activityRows.length - 1];
+          text += ' Earliest event available to you: ' + formatAuditTime(earliest.occurred_at) + '.';
+        }
+        coverage.textContent = text;
+      }
+
+      function renderActivityDetail(r) {
+        const meta = r.metadata || {};
+        const original = meta.client_occurred_at
+          ? formatAuditTime(meta.client_occurred_at)
+          : 'Not recorded for this event (server time only)';
+        const kv = [
+          ['Employee', (r.actor_name || r.actor_email || 'Unknown employee') + ' (' + (r.actor_email || 'no email') + ')'],
+          ['Role', r.actor_role || 'Unknown'],
+          ['Department', r.actor_department || r.department || '—'],
+          ['Original action timestamp', original],
+          ['Server recording timestamp', formatAuditTime(r.occurred_at)],
+          ['Action', r.description || activityActionLabel(r.action_type)],
+          ['Action type', r.action_type || '—'],
+          ['Source module', r.module || '—'],
+          ['Source', r.source || '—'],
+          ['Record', (r.entity_type || 'record') + ': ' + (r.entity_label || r.entity_id || '—')],
+          ['Room', meta.room || '—'],
+          ['Report ID', meta.report_date || '—'],
+          ['Visibility', r.visibility || '—'],
+          ['Status change', meta.status_from ? (meta.status_from + ' → ' + meta.status_to) : '—'],
+          ['Cleared flags', meta.unset_flags ? prettyAuditJson(meta.unset_flags) : '—']
+        ];
+        let html = '<div class="activity-detail"><div class="panel-title">Audit event</div><dl class="activity-kv">';
+        kv.forEach(([k, v]) => {
+          html += '<dt>' + escapeHtml(k) + '</dt><dd>' + escapeHtml(v) + '</dd>';
+        });
+        html += '</dl>';
+        html += '<div class="panel-title">Previous values</div><pre>' + escapeHtml(prettyAuditJson(r.old_values)) + '</pre>';
+        html += '<div class="panel-title">New values</div><pre>' + escapeHtml(prettyAuditJson(r.new_values)) + '</pre>';
+        html += '<div class="panel-title">Metadata</div><pre>' + escapeHtml(prettyAuditJson(meta)) + '</pre>';
+        html += '<p class="panel-label">This record is append-only. Failed and unchanged writes produce no audit event.</p></div>';
+        document.getElementById('activityDetailBody').innerHTML = html;
+        document.getElementById('activityList').classList.add('hidden');
+        document.getElementById('activityDetail').classList.remove('hidden');
+        activityViewing = r;
+      }
+
+      async function loadActivity(reset) {
+        if (activityLoading) return;
+        if (!sbConfigured() || !sbClient()) {
+          document.getElementById('activityStatus').textContent = 'Supabase not configured yet.';
+          return;
+        }
+        if (reset) {
+          activityRows = [];
+          activityOffset = 0;
+          activityHasMore = false;
+          activityViewing = null;
+          document.getElementById('activityDetail').classList.add('hidden');
+          document.getElementById('activityList').classList.remove('hidden');
+        }
+        activityLoading = true;
+        const status = document.getElementById('activityStatus');
+        status.textContent = 'Loading activity…';
+        try {
+          const { data, error } = await buildActivityQuery()
+            .order('occurred_at', { ascending: false })
+            .order('id', { ascending: false })
+            .range(activityOffset, activityOffset + ACTIVITY_PAGE_SIZE);
+          if (error) throw error;
+          const rows = data || [];
+          const page = rows.slice(0, ACTIVITY_PAGE_SIZE);
+          activityHasMore = rows.length > ACTIVITY_PAGE_SIZE;
+          activityRows = activityRows.concat(page);
+          activityOffset += page.length;
+          collectActivityOptions();
+          renderActivityOptions();
+          renderActivityList();
+          status.textContent = activityRows.length
+            ? (activityHasMore ? 'Showing ' + activityRows.length + ' most recent events.' : 'All ' + activityRows.length + ' events shown.')
+            : '';
+        } catch (e) {
+          console.error(e);
+          status.textContent = 'Could not load activity — check your connection.';
+        } finally {
+          activityLoading = false;
+        }
+      }
+
+      function resetActivityFilters() {
+        ['activityEmployeeFilter', 'activityDepartmentFilter', 'activityRoleFilter',
+          'activityModuleFilter', 'activityActionFilter', 'activityDateFrom', 'activityDateTo',
+          'activitySearch'].forEach(id => { document.getElementById(id).value = ''; });
+        loadActivity(true);
+      }
+
       function renderAll() {
         if (tabAccess('setup') !== 'hidden') renderSetup();
         if (tabAccess('checklist') !== 'hidden') renderChecklist();
@@ -3058,6 +3568,10 @@
           }
         });
 
+        // History has two sections: Reports (supervisors/managers) and Activity
+        // (everyone, own rows only for staff). Gate them independently of the tab.
+        applyHistoryGating();
+
         // "Confirmation" panel only makes sense when the role can sign at least one side.
         const confirmTitle = document.getElementById('confirmationTitle');
         if (confirmTitle) {
@@ -3082,6 +3596,24 @@
           rs.addEventListener('input', onRoomSearchInput);
           rs.dataset.wired = '1';
         }
+        ['activityEmployeeFilter', 'activityDepartmentFilter', 'activityRoleFilter',
+          'activityModuleFilter', 'activityActionFilter', 'activityDateFrom', 'activityDateTo'
+        ].forEach(id => {
+          const el = document.getElementById(id);
+          if (el && !el.dataset.wired) {
+            el.addEventListener('change', () => loadActivity(true));
+            el.dataset.wired = '1';
+          }
+        });
+        const as = document.getElementById('activitySearch');
+        if (as && !as.dataset.wired) {
+          let debounce = null;
+          as.addEventListener('input', () => {
+            if (debounce) clearTimeout(debounce);
+            debounce = setTimeout(() => loadActivity(true), 300);
+          });
+          as.dataset.wired = '1';
+        }
       }
 
       function switchTab(tab) {
@@ -3097,9 +3629,15 @@
           b.classList.toggle('active', b.getAttribute('data-tab') === tab);
         });
         if (tab === 'history') {
-          document.getElementById('historyDetail').classList.add('hidden');
-          document.getElementById('historyList').classList.remove('hidden');
-          loadHistoryList();
+          applyHistoryGating();
+          if (canSeeHistoryReports()) {
+            setHistorySegment('reports');
+            document.getElementById('historyDetail').classList.add('hidden');
+            document.getElementById('historyList').classList.remove('hidden');
+            loadHistoryList();
+          } else {
+            setHistorySegment('activity');
+          }
         }
       }
 
@@ -3341,6 +3879,27 @@
           const s = computeSummary();
           document.getElementById('printArea').innerHTML = buildPrintHtml(s.unticked, s.extras, s.noLuggage, s.dnd);
           setTimeout(() => window.print(), 50);
+          return;
+        }
+
+        const segBtn = e.target.closest('.seg-btn');
+        if (segBtn) { setHistorySegment(segBtn.getAttribute('data-segment')); return; }
+
+        if (e.target.id === 'activityLoadMoreBtn') { loadActivity(false); return; }
+
+        if (e.target.id === 'activityResetBtn') { resetActivityFilters(); return; }
+
+        if (e.target.id === 'activityBackBtn') {
+          document.getElementById('activityDetail').classList.add('hidden');
+          document.getElementById('activityList').classList.remove('hidden');
+          activityViewing = null;
+          return;
+        }
+
+        const activityRow = e.target.closest('[data-action="viewActivity"]');
+        if (activityRow) {
+          const row = activityRows.find(r => String(r.id) === activityRow.getAttribute('data-id'));
+          if (row) renderActivityDetail(row);
           return;
         }
 
@@ -3616,6 +4175,7 @@
         const client = sbClient();
         if (client) try { await client.auth.signOut(); } catch (_) { }
         session = null; me = null;
+        activityRows = []; activityOffset = 0; activityHasMore = false; activityViewing = null;
         document.body.removeAttribute('data-role');
         document.getElementById('whoBadge').style.display = 'none';
         closeChangePwdModal();
