@@ -216,6 +216,24 @@ Note: migration 011 was applied, then a live probe exposed two defects in the un
 
 ---
 
+## 3f. P3 Batch B verification (report creation)
+
+Migration `012_p3_report_creation.sql` extends the same audit function to `AFTER INSERT OR UPDATE`. On INSERT it emits one bounded `report_created` row and returns before all P1/P2 UPDATE logic.
+
+| Check | Result |
+|---|---|
+| First INSERT with a room list | exactly one `report_created`, `creation_source=room_list_import`, correct counts, canonical room-list MD5, sorted sample (≤25), truncation flag; zero P1/P2 events |
+| Other INSERT sources | `first_checklist_action`, `extras_first`, `new_day` all detected correctly; one event each |
+| Subsequent UPDATE | normal P1 room event emitted; no second `report_created`; no-op UPDATE zero rows |
+| Service-role INSERT | zero rows (no verified actor) |
+| RLS | GM and both managers see both shared `report_created` rows; supervisors see none; staff see only their own |
+| Browser | Activity displays `report_created` with concise old→new summary; Checklist renders normally |
+| Cleanup | synthetic reports/accounts/audit rows removed; `audit_rows=0`, `today_rooms=97` |
+
+Note: migration 012 was applied, then a live probe showed the trigger was still UPDATE-only. The uncommitted migration was corrected in place (trigger extended to INSERT) and re-applied before any P3 Batch B commit; all affected probes were rolled back.
+
+---
+
 ## 4. Implementation status (final-report basis)
 
 | Requirement | Status | Evidence |
@@ -230,11 +248,12 @@ Note: migration 011 was applied, then a live probe exposed two defects in the un
 | Room Management / extras / report lifecycle audit | **Implemented (P2)** | Migration `010_p2_audit_capture.sql`; §3d |
 | Staff management / reset audit | **Implemented (P3 Batch A)** | migration `011_p3_staff_audit.sql`; §3e |
 | UI (History → `Reports | Activity`, filters, detail, RTL/mobile) | **Implemented in a later milestone** | See `docs/activity-ui.md` and §3c |
+| New report creation (`report_created`) | **Implemented (P3 Batch B)** | migration `012_p3_report_creation.sql`; §3f |
 | Offline intermediate-transition preservation | **Unimplemented** | Outbox still keeps only latest payload per date; see §6 |
 | Historical baseline backfill | **Not applicable (rejected)** | No marker/backfill rows; coverage starts at deployment |
 | Export logging (copy email / print) | **Out of scope** | Per owner decision |
 
-**P1 classification at that milestone was: database/backend implemented.** The Activity UI, P2, and P3 Batch A have since been delivered as separate milestones (§3c–§3e). P3 Batch B (`report_created`) and the offline event queue remain unimplemented.
+**P1 classification at that milestone was: database/backend implemented.** The Activity UI, P2, P3 Batch A and P3 Batch B have since been delivered as separate milestones (§3c–§3f). Only the Offline Event Queue remains unimplemented.
 
 ---
 
