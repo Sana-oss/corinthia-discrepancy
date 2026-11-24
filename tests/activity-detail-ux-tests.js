@@ -406,5 +406,14 @@ test('Rows with unresolved identity do not show placeholder labels', () => {
   assert.ok(!out.includes('Unknown role') && !out.includes('Unknown employee'), out);
 });
 
+test('Technical details summary has a comfortable vertical touch target', () => {
+  const rule = html.match(/\.activity-detail \.activity-tech > summary\s*\{([^}]*)\}/);
+  assert.ok(rule, 'summary style rule missing');
+  const padding = rule[1].match(/padding-block:\s*(\d+(?:\.\d+)?)px/);
+  assert.ok(padding, 'summary has no vertical padding');
+  // 11px text has a ~13px line box; 2 x 14px padding gives a ~41px target.
+  assert.ok(Number(padding[1]) >= 14, 'vertical padding must yield at least a 40px tap target');
+});
+
 console.log(`\n--- Test Suite Completed: ${passedTests}/${totalTests} Passed ---`);
 if (passedTests !== totalTests) process.exit(1);
