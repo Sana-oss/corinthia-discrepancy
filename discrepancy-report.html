@@ -1330,6 +1330,125 @@
       color: var(--ink-soft);
     }
 
+    .activity-detail .activity-hero {
+      margin-block-end: 14px;
+    }
+
+    .activity-detail .activity-eyebrow {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: .6px;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+    }
+
+    .activity-detail .activity-title {
+      margin-block: 6px;
+      font-size: 19px;
+      line-height: 1.3;
+      font-weight: 500;
+      color: var(--ink);
+      text-align: start;
+    }
+
+    .activity-detail .activity-summary {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.65;
+      color: var(--ink);
+      text-align: start;
+    }
+
+    .activity-detail .activity-who {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 10px;
+      align-items: baseline;
+      padding-block-end: 12px;
+      border-block-end: 1px solid var(--line);
+      margin-block-end: 12px;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .activity-detail .activity-who-unresolved {
+      color: var(--ink-soft);
+    }
+
+    .activity-detail .activity-facts {
+      display: grid;
+      grid-template-columns: minmax(104px, auto) minmax(0, 1fr);
+      gap: 6px 14px;
+      margin: 0 0 14px;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .activity-detail .activity-facts dt {
+      color: var(--ink-soft);
+      letter-spacing: .4px;
+    }
+
+    .activity-detail .activity-facts dd {
+      margin: 0;
+      color: var(--ink);
+      overflow-wrap: anywhere;
+    }
+
+    .activity-detail .activity-changes {
+      list-style: none;
+      display: grid;
+      gap: 6px;
+      margin: 0 0 14px;
+      padding: 0;
+    }
+
+    .activity-detail .activity-changes li {
+      padding-inline-start: 10px;
+      border-inline-start: 2px solid var(--line);
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--ink);
+      overflow-wrap: anywhere;
+    }
+
+    .activity-detail .activity-tech {
+      margin-block-start: 16px;
+      padding-block-start: 12px;
+      border-block-start: 1px solid var(--line);
+    }
+
+    .activity-detail .activity-tech > summary {
+      cursor: pointer;
+      font-size: 11px;
+      letter-spacing: .5px;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+      list-style-position: inside;
+    }
+
+    .activity-detail .activity-tech[open] > summary {
+      color: var(--ink);
+      margin-block-end: 4px;
+    }
+
+    .activity-detail .tech-block {
+      margin-block-start: 12px;
+    }
+
+    .activity-detail .tech-label {
+      margin-block-end: 4px;
+      font-size: 11px;
+      color: var(--ink-soft);
+    }
+
+    .activity-item .a-summary {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
     .activity-detail .activity-kv {
       display: grid;
       grid-template-columns: minmax(110px, auto) minmax(0, 1fr);
@@ -3306,8 +3425,392 @@
         try { return JSON.stringify(value, null, 2); } catch (e) { return String(value); }
       }
 
+      // ============================================================
+      // Activity presentation layer (read-only).
+      // Audited rows stay untouched: this only decides how stored
+      // fields are worded. Every raw value remains available inside
+      // the collapsed "Technical details" section.
+      // ============================================================
+      const ACTIVITY_TITLES = {
+        room_confirmed: 'Room checked',
+        room_unconfirmed: 'Room check cleared',
+        room_noluggage_on: 'No luggage flagged',
+        room_noluggage_off: 'No luggage flag removed',
+        room_dnd_on: 'Do Not Disturb recorded',
+        room_dnd_off: 'Do Not Disturb cleared',
+        room_status_changed: 'Room status changed',
+        room_list_imported: 'Room list imported',
+        extra_room_added: 'Extra room added',
+        extra_room_removed: 'Extra room removed',
+        report_created: 'Daily report created',
+        report_submitted: 'Report submitted',
+        report_recalled: 'Report recalled',
+        report_received: 'Report received',
+        report_receive_undone: 'Report receipt undone',
+        report_signed: 'Report signed',
+        report_signature_undone: 'Report signature undone',
+        report_lifecycle_changed: 'Report status updated',
+        staff_created: 'Staff account created',
+        staff_updated: 'Staff account updated',
+        staff_active_changed: 'Staff account status changed',
+        staff_deleted: 'Staff account deleted',
+        staff_password_reset: 'Password reset',
+        staff_password_changed_self: 'Password changed'
+      };
+      const ACTIVITY_STATUS_LABELS = {
+        unconfirmed: 'Unchecked',
+        confirmed: 'Checked',
+        noluggage: 'No luggage',
+        dnd: 'Do Not Disturb',
+        in_progress: 'In progress',
+        submitted: 'Submitted',
+        received: 'Received',
+        signed: 'Signed'
+      };
+      const ACTIVITY_MODULE_LABELS = {
+        room_checklist: 'Room checklist',
+        setup: 'Room list setup',
+        extra_rooms: 'Extra rooms',
+        report_lifecycle: 'Report lifecycle',
+        daily_report: 'Daily report',
+        staff: 'Staff'
+      };
+      const ACTIVITY_FIELD_LABELS = {
+        full_name: 'Name',
+        role: 'Role',
+        active: 'Account',
+        status: 'Status',
+        total_rooms: 'Total rooms',
+        rooms_count: 'Total rooms',
+        extras_count: 'Extra rooms'
+      };
+
+      function activityHumanize(value) {
+        const text = String(value == null ? '' : value).replace(/[_-]+/g, ' ').trim();
+        if (!text) return '';
+        return text.charAt(0).toUpperCase() + text.slice(1);
+      }
+
       function activityActionLabel(action) {
-        return String(action || 'event').replace(/_/g, ' ');
+        const key = String(action || '');
+        return ACTIVITY_TITLES[key] || activityHumanize(key || 'event');
+      }
+
+      function activityStatusLabel(value) {
+        const key = String(value || '').trim();
+        if (!key) return '';
+        return ACTIVITY_STATUS_LABELS[key] || activityHumanize(key);
+      }
+
+      function activityRoleLabel(role) {
+        const key = String(role || '').trim();
+        if (!key) return '';
+        return ROLE_LABELS[key] || activityHumanize(key);
+      }
+
+      function activityDeptLabel(dept) {
+        const key = String(dept || '').trim();
+        if (!key) return '';
+        if (key === 'hk') return 'Housekeeping';
+        if (key === 'fo') return 'Front Desk';
+        if (key === 'all') return 'All departments';
+        return activityHumanize(key);
+      }
+
+      function activityModuleLabel(module) {
+        const key = String(module || '').trim();
+        if (!key) return '';
+        return ACTIVITY_MODULE_LABELS[key] || activityHumanize(key);
+      }
+
+      function activityVisibilityLabel(value) {
+        const key = String(value || '').trim();
+        if (!key) return '';
+        if (key === 'department') return 'Department';
+        if (key === 'shared_report') return 'Both departments';
+        if (key === 'staff_admin') return 'Managers only';
+        return activityHumanize(key);
+      }
+
+      // Human-readable report date. Stored dates are calendar dates, so they are
+      // formatted in UTC to avoid shifting a day in negative-offset time zones.
+      function activityDateLabel(value) {
+        const raw = String(value || '').trim();
+        const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!match) return raw;
+        const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+        if (isNaN(date.getTime())) return raw;
+        try {
+          return new Intl.DateTimeFormat(document.documentElement.lang || undefined,
+            { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }).format(date);
+        } catch (e) {
+          return raw;
+        }
+      }
+
+      // Credential-like keys are never shown, in the human view or in the
+      // technical dump. Password fields are not captured by the audit triggers;
+      // this is defence in depth so a future payload cannot leak them.
+      function activityIsCredentialKey(key) {
+        return /pass(word|wd)?|secret|token|credential|api[_-]?key|private[_-]?key|access[_-]?key/i
+          .test(String(key || ''));
+      }
+
+      function activityHasValue(value) {
+        if (value === null || value === undefined) return false;
+        if (typeof value === 'string') {
+          const text = value.trim();
+          return text !== '' && text !== '—' && text !== '-' && text !== 'null' && text !== 'undefined';
+        }
+        if (Array.isArray(value)) return value.length > 0;
+        if (typeof value === 'object') return Object.keys(value).length > 0;
+        return true;
+      }
+
+      function activitySanitize(value) {
+        if (Array.isArray(value)) return value.map(activitySanitize);
+        if (value && typeof value === 'object') {
+          const clean = {};
+          Object.keys(value).forEach(key => {
+            if (!activityIsCredentialKey(key)) clean[key] = activitySanitize(value[key]);
+          });
+          return clean;
+        }
+        return value;
+      }
+
+      function activityValueText(key, value) {
+        if (value === true) return key === 'active' ? 'Active' : 'Yes';
+        if (value === false) return key === 'active' ? 'Inactive' : 'No';
+        if (key === 'role') return activityRoleLabel(value);
+        if (['status', 'from_status', 'to_status', 'status_from', 'status_to'].includes(key)) {
+          return activityStatusLabel(value);
+        }
+        if (typeof value === 'string' || typeof value === 'number') return String(value);
+        try { return JSON.stringify(value); } catch (e) { return String(value); }
+      }
+
+      function activityFlagList(value) {
+        const list = Array.isArray(value) ? value : (activityHasValue(value) ? [value] : []);
+        return list
+          .map(flag => String(flag == null ? '' : flag).trim())
+          .filter(flag => flag && !activityIsCredentialKey(flag))
+          .map(flag => activityStatusLabel(flag) || activityHumanize(flag));
+      }
+
+      function activityChangeLines(oldValues, newValues) {
+        const before = (oldValues && typeof oldValues === 'object' && !Array.isArray(oldValues)) ? oldValues : {};
+        const after = (newValues && typeof newValues === 'object' && !Array.isArray(newValues)) ? newValues : {};
+        const keys = Object.keys(before).concat(Object.keys(after).filter(k => !(k in before)));
+        return keys.reduce((lines, key) => {
+          if (activityIsCredentialKey(key)) return lines;
+          const from = before[key], to = after[key];
+          if (!activityHasValue(from) && !activityHasValue(to)) return lines;
+          if (JSON.stringify(from) === JSON.stringify(to)) return lines;
+          const label = ACTIVITY_FIELD_LABELS[key] || activityHumanize(key);
+          const fromText = activityHasValue(from) ? activityValueText(key, from) : 'not set';
+          const toText = activityHasValue(to) ? activityValueText(key, to) : 'not set';
+          lines.push(label + ': ' + fromText + ' → ' + toText);
+          return lines;
+        }, []);
+      }
+
+      // Returns { title, summary, facts: [[label, value]], changes: [line] }.
+      // Only real stored fields are used — nothing is inferred or invented.
+      function activityPresentation(r) {
+        const meta = (r.metadata && typeof r.metadata === 'object' && !Array.isArray(r.metadata))
+          ? r.metadata : {};
+        const oldV = (r.old_values && typeof r.old_values === 'object' && !Array.isArray(r.old_values))
+          ? r.old_values : {};
+        const newV = (r.new_values && typeof r.new_values === 'object' && !Array.isArray(r.new_values))
+          ? r.new_values : {};
+        const action = String(r.action_type || '');
+        const room = String(meta.room || '').trim();
+        const date = activityDateLabel(meta.report_date);
+        const reportRef = date ? 'the ' + date + ' report' : 'the report';
+        const reportRefStart = date ? 'The ' + date + ' report' : 'The report';
+        const title = ACTIVITY_TITLES[action] || activityHumanize(action || 'Activity');
+        const facts = [];
+        const changes = [];
+        let summary = '';
+
+        if (action === 'report_created') {
+          const counts = (newV.status_counts && typeof newV.status_counts === 'object') ? newV.status_counts : {};
+          const statusBits = [];
+          if (counts.confirmed !== undefined) statusBits.push(counts.confirmed + ' checked');
+          if (counts.noluggage !== undefined) statusBits.push(counts.noluggage + ' no luggage');
+          if (counts.dnd !== undefined) statusBits.push(counts.dnd + ' DND');
+          if (counts.unconfirmed !== undefined) statusBits.push(counts.unconfirmed + ' unchecked');
+          summary = 'A new daily report was created' + (date ? ' for ' + date : '') + '.';
+          if (date) facts.push(['Report', date]);
+          if (newV.rooms_count !== undefined) facts.push(['Total rooms', String(newV.rooms_count)]);
+          if (statusBits.length) facts.push(['Room status', statusBits.join(' · ')]);
+          if (newV.extras_count !== undefined) facts.push(['Extra rooms', String(newV.extras_count)]);
+
+        } else if (action === 'room_list_imported') {
+          const part = Number(meta.part || 1);
+          const partCount = Number(meta.part_count || 1);
+          const added = meta.added_count !== undefined ? Number(meta.added_count)
+            : (Array.isArray(meta.added_rooms) ? meta.added_rooms.length : 0);
+          const removed = meta.removed_count !== undefined ? Number(meta.removed_count)
+            : (Array.isArray(meta.removed_rooms) ? meta.removed_rooms.length : 0);
+          const reset = meta.reset_count !== undefined ? Number(meta.reset_count)
+            : (Array.isArray(meta.reset_rooms) ? meta.reset_rooms.length : 0);
+          const stay = meta.changed_stay_count !== undefined ? Number(meta.changed_stay_count)
+            : (Array.isArray(meta.changed_stay_rooms) ? meta.changed_stay_rooms.length : 0);
+          const cleared = Array.isArray(meta.cleared_confirmations) ? meta.cleared_confirmations.length : 0;
+          const bits = [];
+          if (added) bits.push(added + ' added');
+          if (removed) bits.push(removed + ' removed');
+          if (reset) bits.push(reset + ' reset');
+          if (stay) bits.push(stay + ' stay change' + (stay === 1 ? '' : 's'));
+          if (cleared) bits.push(cleared + ' confirmation' + (cleared === 1 ? '' : 's') + ' cleared');
+          summary = 'The room list' + (date ? ' for ' + date : '') + ' was imported'
+            + (bits.length ? ': ' + bits.join(', ') : '') + '.';
+          if (partCount > 1) summary += ' Part ' + part + ' of ' + partCount + '.';
+          if (date) facts.push(['Report', date]);
+          if (part === 1) {
+            if (oldV.total_rooms !== undefined || newV.total_rooms !== undefined) {
+              facts.push(['Total rooms', String(oldV.total_rooms !== undefined ? oldV.total_rooms : '?')
+                + ' → ' + String(newV.total_rooms !== undefined ? newV.total_rooms : '?')]);
+            }
+            if (meta.affected_room_count !== undefined) {
+              facts.push(['Rooms affected', String(meta.affected_room_count)]);
+            }
+          }
+
+        } else if (action.indexOf('room_') === 0) {
+          const from = meta.status_from || oldV.status || '';
+          const to = meta.status_to || newV.status || '';
+          if (date) facts.push(['Report', date]);
+          if (room) facts.push(['Room', room]);
+          if (action === 'room_confirmed') {
+            summary = room ? 'Room ' + room + ' was marked as checked.' : 'A room was marked as checked.';
+            if (from && to && from !== to) changes.push('Status: ' + activityStatusLabel(from) + ' → ' + activityStatusLabel(to));
+          } else if (action === 'room_unconfirmed') {
+            summary = room ? 'The check on room ' + room + ' was cleared.' : 'A room check was cleared.';
+          } else if (action === 'room_noluggage_on') {
+            summary = room ? 'Room ' + room + ' was flagged as having no luggage.' : 'A room was flagged as having no luggage.';
+          } else if (action === 'room_noluggage_off') {
+            summary = room ? 'The no-luggage flag was removed from room ' + room + '.' : 'A no-luggage flag was removed.';
+          } else if (action === 'room_dnd_on') {
+            summary = room ? 'Room ' + room + ' was marked Do Not Disturb (could not check).' : 'A room was marked Do Not Disturb.';
+          } else if (action === 'room_dnd_off') {
+            summary = room ? 'The Do Not Disturb flag was cleared from room ' + room + '.' : 'A Do Not Disturb flag was cleared.';
+          } else {
+            const transition = (from || to)
+              ? ' from ' + (activityStatusLabel(from) || 'unknown') + ' to ' + (activityStatusLabel(to) || 'unknown')
+              : '';
+            summary = room ? 'Room ' + room + ' changed status' + transition + '.' : 'A room status changed' + transition + '.';
+          }
+          const flagsSet = activityFlagList(meta.set_flags);
+          const flagsCleared = activityFlagList(meta.unset_flags);
+          if (flagsSet.length) facts.push(['Flags set', flagsSet.join(', ')]);
+          if (flagsCleared.length) facts.push(['Flags cleared', flagsCleared.join(', ')]);
+
+        } else if (action === 'extra_room_added' || action === 'extra_room_removed') {
+          const verb = action === 'extra_room_added' ? 'added to' : 'removed from';
+          summary = room
+            ? 'Room ' + room + ' was ' + verb + ' the extra rooms list' + (date ? ' for the ' + date + ' report' : '') + '.'
+            : 'An extra room was ' + verb + ' the extra rooms list' + (date ? ' for the ' + date + ' report' : '') + '.';
+          if (date) facts.push(['Report', date]);
+          if (room) facts.push(['Room', room]);
+
+        } else if (action.indexOf('report_') === 0) {
+          const from = meta.from_status || oldV.status || '';
+          const to = meta.to_status || newV.status || '';
+          const newSig = (newV.signature && typeof newV.signature === 'object') ? newV.signature : null;
+          const oldSig = (oldV.signature && typeof oldV.signature === 'object') ? oldV.signature : null;
+          const sig = newSig || oldSig || {};
+          const signer = [sig.name, sig.email].filter(Boolean).join(' · ');
+          if (date) facts.push(['Report', date]);
+          if (action === 'report_submitted') {
+            summary = reportRefStart + ' was submitted to Front Desk' + (sig.name ? ' by ' + sig.name : '') + '.';
+          } else if (action === 'report_recalled') {
+            summary = reportRefStart + ' was recalled, reopening the checklist for Housekeeping.';
+          } else if (action === 'report_received') {
+            summary = 'Front Desk recorded receipt of ' + reportRef + '.';
+          } else if (action === 'report_receive_undone') {
+            summary = 'The Front Desk receipt of ' + reportRef + ' was undone.';
+          } else if (action === 'report_signed') {
+            summary = reportRefStart + ' was signed off by Front Desk.';
+          } else if (action === 'report_signature_undone') {
+            summary = 'The Front Desk signature on ' + reportRef + ' was undone.';
+          } else {
+            summary = reportRefStart + ' moved from ' + (activityStatusLabel(from) || 'an unknown status')
+              + ' to ' + (activityStatusLabel(to) || 'an unknown status') + '.';
+          }
+          if (from && to) {
+            facts.push(['Status', activityStatusLabel(from) + ' → ' + activityStatusLabel(to)]);
+          }
+          if (action === 'report_lifecycle_changed' && meta.reason) {
+            facts.push(['Reason', meta.reason === 'unexpected_companion_state'
+              ? 'The report status fields changed in a way that did not match a standard action'
+              : activityHumanize(meta.reason)]);
+          }
+          if (signer) {
+            const sigLabel = action === 'report_submitted' ? 'Submitted by'
+              : action === 'report_received' ? 'Received by'
+                : action === 'report_signed' ? 'Signed by'
+                  : newSig ? 'Signature' : 'Signature removed';
+            facts.push([sigLabel, signer]);
+          }
+          if (sig.time) {
+            facts.push([action === 'report_received' ? 'Received at' : 'Signed at', formatAuditTime(sig.time)]);
+          }
+
+        } else if (action.indexOf('staff_') === 0) {
+          const targetName = meta.target_full_name || newV.full_name || oldV.full_name
+            || (r.entity_type === 'staff' ? r.entity_label : '') || '';
+          const targetEmail = meta.target_email || r.entity_id || '';
+          const targetRole = meta.target_role || newV.role || oldV.role || '';
+          const targetDept = meta.target_department || ROLE_DEPT[targetRole] || '';
+          const person = targetName || targetEmail || 'A staff member';
+          const roleText = activityRoleLabel(targetRole);
+          if (action === 'staff_created') {
+            summary = person + ' was added as a staff member'
+              + (roleText ? ' (' + roleText + (targetDept ? ' · ' + activityDeptLabel(targetDept) : '') + ')' : '') + '.';
+          } else if (action === 'staff_updated') {
+            summary = 'The staff account for ' + person + ' was updated.';
+            changes.push.apply(changes, activityChangeLines(oldV, newV));
+          } else if (action === 'staff_active_changed') {
+            const active = newV.active;
+            summary = person + "'s account was "
+              + (active === false ? 'deactivated' : (active === true ? 'reactivated' : 'updated')) + '.';
+          } else if (action === 'staff_deleted') {
+            summary = "The staff account for " + person + ' was deleted.';
+          } else if (action === 'staff_password_reset') {
+            summary = 'The sign-in password for ' + person + ' was reset.';
+          } else if (action === 'staff_password_changed_self') {
+            summary = person + ' changed their own sign-in password.';
+          } else {
+            summary = 'The staff account for ' + person + ' was updated.';
+          }
+          if (targetName) facts.push(['Employee', targetName]);
+          if (targetEmail && targetEmail !== targetName) facts.push(['Email', targetEmail]);
+          if (roleText) facts.push(['Role', roleText]);
+          if (targetDept) facts.push(['Department', activityDeptLabel(targetDept)]);
+          if (action === 'staff_active_changed' && newV.active !== undefined) {
+            facts.push(['Account', newV.active === false ? 'Inactive' : 'Active']);
+          }
+
+        } else {
+          // Unknown future event type: keep the stored description readable and
+          // still surface the scope fields, without guessing at semantics.
+          summary = activityHumanize(r.description || action || 'Activity recorded');
+          if (summary && !/[.!?]$/.test(summary)) summary += '.';
+          if (date) facts.push(['Report', date]);
+          if (room) facts.push(['Room', room]);
+          changes.push.apply(changes, activityChangeLines(oldV, newV));
+        }
+
+        if (!summary) summary = 'This activity was recorded.';
+        return {
+          title: title,
+          summary: summary,
+          facts: facts.filter(pair => activityHasValue(pair[0]) && activityHasValue(pair[1])),
+          changes: changes.filter(activityHasValue)
+        };
       }
 
       function activityFilterValues() {
@@ -3388,26 +3891,28 @@
       }
 
       function renderActivityRow(r) {
-        const meta = r.metadata || {};
+        const meta = (r.metadata && typeof r.metadata === 'object') ? r.metadata : {};
+        const view = activityPresentation(r);
         const when = formatAuditTime(r.occurred_at);
-        const original = meta.client_occurred_at ? formatAuditTime(meta.client_occurred_at) : '';
-        const who = r.actor_name || r.actor_email || 'Unknown employee';
-        const role = r.actor_role ? (ROLE_LABELS[r.actor_role] || r.actor_role) : 'Unknown role';
-        const dept = r.actor_department || r.department || '';
-        const record = r.entity_label || r.entity_id || 'Record';
-        const change = (r.old_values || r.new_values)
-          ? prettyAuditJson(r.old_values) + ' → ' + prettyAuditJson(r.new_values) : '';
+        const who = r.actor_name || r.actor_email || 'Employee identity could not be confirmed';
+        const role = r.actor_role ? activityRoleLabel(r.actor_role) : '';
+        const dept = activityDeptLabel(r.actor_department || r.department || '');
+        const identity = role
+          ? role + (dept ? ' · ' + dept : '')
+          : dept;
+        const scope = [
+          meta.room ? 'Room ' + meta.room : '',
+          meta.report_date ? 'Report ' + activityDateLabel(meta.report_date) : ''
+        ].filter(Boolean).join(' · ');
         return '<li><div class="activity-item" data-action="viewActivity" data-id="' + escapeHtml(r.id)
           + '" style="cursor:pointer;">'
-          + '<div class="a-head"><div class="a-action">' + escapeHtml(r.description || activityActionLabel(r.action_type)) + '</div>'
+          + '<div class="a-head"><div class="a-action">' + escapeHtml(view.title) + '</div>'
           + '<div class="a-when">' + escapeHtml(when) + '</div></div>'
           + '<div class="a-meta"><span class="a-who">' + escapeHtml(who) + '</span>'
-          + '<span class="a-role">' + escapeHtml(role) + (dept ? ' · ' + escapeHtml(dept) : '') + '</span></div>'
-          + '<div class="a-line"><span class="a-tag">' + escapeHtml(r.module) + '</span> '
-          + escapeHtml(record) + (meta.room ? ' · room ' + escapeHtml(meta.room) : '')
-          + (meta.report_date ? ' · report ' + escapeHtml(meta.report_date) : '') + '</div>'
-          + (change ? '<div class="a-line mono">' + escapeHtml(change) + '</div>' : '')
-          + (original ? '<div class="a-line">Original action time: ' + escapeHtml(original) + '</div>' : '')
+          + (identity ? '<span class="a-role">' + escapeHtml(identity) + '</span>' : '') + '</div>'
+          + '<div class="a-line a-summary">' + escapeHtml(view.summary) + '</div>'
+          + '<div class="a-line"><span class="a-tag">' + escapeHtml(activityModuleLabel(r.module)) + '</span>'
+          + (scope ? ' ' + escapeHtml(scope) : '') + '</div>'
           + '</div></li>';
       }
 
@@ -3428,36 +3933,85 @@
       }
 
       function renderActivityDetail(r) {
-        const meta = r.metadata || {};
+        const meta = (r.metadata && typeof r.metadata === 'object' && !Array.isArray(r.metadata))
+          ? r.metadata : {};
+        const view = activityPresentation(r);
+        const who = r.actor_name || r.actor_email || '';
+        const role = r.actor_role ? activityRoleLabel(r.actor_role) : '';
+        const dept = activityDeptLabel(r.actor_department || r.department || '');
+        const unresolved = !!(meta.identity_unresolved || meta.identity_mismatch);
+        const moduleName = activityModuleLabel(r.module);
+
+        const whoBits = [];
+        if (who) whoBits.push('<strong>' + escapeHtml(who) + '</strong>');
+        if (role) {
+          whoBits.push('<span>' + escapeHtml(role) + (dept ? ' · ' + escapeHtml(dept) : '') + '</span>');
+        } else if (dept) {
+          whoBits.push('<span>' + escapeHtml(dept) + '</span>');
+        }
+        whoBits.push('<span>' + escapeHtml(formatAuditTime(r.occurred_at)) + '</span>');
+        if (unresolved) {
+          whoBits.push('<span class="activity-who-unresolved">Employee identity could not be confirmed</span>');
+        }
+
+        let html = '<div class="activity-detail">';
+        html += '<div class="activity-hero">'
+          + (moduleName ? '<div class="activity-eyebrow">' + escapeHtml(moduleName) + '</div>' : '')
+          + '<h3 class="activity-title">' + escapeHtml(view.title) + '</h3>'
+          + '<p class="activity-summary">' + escapeHtml(view.summary) + '</p>'
+          + '</div>';
+        html += '<div class="activity-who">' + whoBits.join('') + '</div>';
+
+        if (view.facts.length) {
+          html += '<dl class="activity-facts">';
+          view.facts.forEach(([label, value]) => {
+            html += '<dt>' + escapeHtml(label) + '</dt><dd>' + escapeHtml(value) + '</dd>';
+          });
+          html += '</dl>';
+        }
+        if (view.changes.length) {
+          html += '<ul class="activity-changes">';
+          view.changes.forEach(line => {
+            html += '<li>' + escapeHtml(line) + '</li>';
+          });
+          html += '</ul>';
+        }
+
         const original = meta.client_occurred_at
           ? formatAuditTime(meta.client_occurred_at)
-          : 'Not recorded for this event (server time only)';
-        const kv = [
-          ['Employee', (r.actor_name || r.actor_email || 'Unknown employee') + ' (' + (r.actor_email || 'no email') + ')'],
-          ['Role', r.actor_role || 'Unknown'],
-          ['Department', r.actor_department || r.department || '—'],
-          ['Original action timestamp', original],
-          ['Server recording timestamp', formatAuditTime(r.occurred_at)],
-          ['Action', r.description || activityActionLabel(r.action_type)],
-          ['Action type', r.action_type || '—'],
-          ['Source module', r.module || '—'],
-          ['Source', r.source || '—'],
-          ['Record', (r.entity_type || 'record') + ': ' + (r.entity_label || r.entity_id || '—')],
-          ['Room', meta.room || '—'],
-          ['Report ID', meta.report_date || '—'],
-          ['Visibility', r.visibility || '—'],
-          ['Status change', meta.status_from ? (meta.status_from + ' → ' + meta.status_to) : '—'],
-          ['Cleared flags', meta.unset_flags ? prettyAuditJson(meta.unset_flags) : '—']
+          : 'Not recorded for this event';
+        const record = r.entity_label || r.entity_id || '';
+        const techKv = [
+          ['Action type', r.action_type || ''],
+          ['Source module', r.module || ''],
+          ['Source', r.source || ''],
+          ['Visibility', activityVisibilityLabel(r.visibility)],
+          ['Record', r.entity_type ? r.entity_type.replace(/_/g, ' ') + (record ? ': ' + record : '') : record],
+          ['Recorded by server', formatAuditTime(r.occurred_at)],
+          ['Original action time', original]
+        ].filter(([, v]) => activityHasValue(v));
+
+        html += '<details class="activity-tech"><summary>Technical details</summary>';
+        if (techKv.length) {
+          html += '<dl class="activity-kv">';
+          techKv.forEach(([k, v]) => {
+            html += '<dt>' + escapeHtml(k) + '</dt><dd>' + escapeHtml(v) + '</dd>';
+          });
+          html += '</dl>';
+        }
+        const techBlocks = [
+          ['Previous values', r.old_values],
+          ['New values', r.new_values],
+          ['Metadata', meta]
         ];
-        let html = '<div class="activity-detail"><div class="panel-title">Audit event</div><dl class="activity-kv">';
-        kv.forEach(([k, v]) => {
-          html += '<dt>' + escapeHtml(k) + '</dt><dd>' + escapeHtml(v) + '</dd>';
+        techBlocks.forEach(([label, value]) => {
+          if (!activityHasValue(value)) return;
+          html += '<div class="tech-block"><div class="tech-label">' + escapeHtml(label) + '</div><pre>'
+            + escapeHtml(prettyAuditJson(activitySanitize(value))) + '</pre></div>';
         });
-        html += '</dl>';
-        html += '<div class="panel-title">Previous values</div><pre>' + escapeHtml(prettyAuditJson(r.old_values)) + '</pre>';
-        html += '<div class="panel-title">New values</div><pre>' + escapeHtml(prettyAuditJson(r.new_values)) + '</pre>';
-        html += '<div class="panel-title">Metadata</div><pre>' + escapeHtml(prettyAuditJson(meta)) + '</pre>';
+        html += '</details>';
         html += '<p class="panel-label">This record is append-only. Failed and unchanged writes produce no audit event.</p></div>';
+
         document.getElementById('activityDetailBody').innerHTML = html;
         document.getElementById('activityList').classList.add('hidden');
         document.getElementById('activityDetail').classList.remove('hidden');
