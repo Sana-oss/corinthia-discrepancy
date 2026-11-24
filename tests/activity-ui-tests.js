@@ -88,13 +88,14 @@ test('Required fields are rendered: identity, action, record, values, timestamps
   ].forEach(field => {
     assert.ok(new RegExp('r\\.' + field + '\\b').test(html), `row renderer omits ${field}`);
   });
-  assert.ok(/Original action timestamp/.test(html), 'original timestamp label missing');
-  assert.ok(/Server recording timestamp/.test(html), 'server timestamp label missing');
-  assert.ok(/client_occurred_at \? formatAuditTime/.test(html),
+  assert.ok(/Original action time/.test(html), 'original timestamp label missing');
+  assert.ok(/Recorded by server/.test(html), 'server timestamp label missing');
+  assert.ok(/client_occurred_at\s*\?\s*formatAuditTime/.test(html),
     'original time must be shown only when actually stored');
-  assert.ok(/Not recorded for this event \(server time only\)/.test(html),
+  assert.ok(/Not recorded for this event/.test(html),
     'no fabricated original timestamp');
-  assert.ok(/Cleared flags/.test(html), 'cross-state metadata must be visible');
+  assert.ok(/Flags cleared/.test(html), 'cross-state metadata must be visible in plain language');
+  assert.ok(/Technical details/.test(html), 'raw audit fields must stay reachable');
 });
 
 test('Coverage start is explicit and never claims pre-deployment history', () => {
